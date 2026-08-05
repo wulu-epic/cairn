@@ -122,7 +122,7 @@ function roleMatches(nodeRole: string, roleHint?: string): boolean {
  */
 
 // Roles that accept text input — for type intents, strongly prefer these.
-const TYPEABLE_ROLES = ['textbox', 'searchbox', 'combobox', 'spinbutton', 'textarea'];
+export const TYPEABLE_ROLES = ['textbox', 'searchbox', 'combobox', 'spinbutton', 'textarea'];
 
 function scoreNode(node: EnhancedNode, intent: Intent): GroundCandidate {
   let score = 0;

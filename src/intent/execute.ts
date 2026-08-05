@@ -18,8 +18,8 @@ import { buildPageModel, type PageModel } from '../model/page-model.js';
 import { clickByRef } from '../actions/click.js';
 import { typeByRef } from '../actions/type.js';
 import { waitForPageSettled, computeDelta, renderDelta, type DeltaResult } from '../model/delta.js';
-import { parseIntent, type Intent } from './parser.js';
-import { groundIntent, renderGroundResult, type GroundResult } from './grounding.js';
+import { parseIntent, type Intent, type ClickIntent, type TypeIntent } from './parser.js';
+import { groundIntent, renderGroundResult, TYPEABLE_ROLES, type GroundResult } from './grounding.js';
 
 export interface ExecuteResult {
   success: boolean;
@@ -28,6 +28,63 @@ export interface ExecuteResult {
   ground?: GroundResult;
   delta?: DeltaResult;
   newModel?: PageModel;
+}
+
+// ─── Click-to-reveal fallback (multi-step intent composition) ──────────
+
+interface RevealResult {
+  newModel: PageModel;
+  ground: GroundResult;
+  clickedRef: string;
+}
+
+/**
+ * Multi-step intent composition: when a type intent's target (e.g. "search
+ * field") isn't found on the current page, check if there's a clickable
+ * link/button with the same name (e.g. a "Search" link that opens a dialog).
+ * If so, click it, wait for the page to settle (dialog/form appears), rebuild
+ * the model, and re-ground the original type intent.
+ *
+ * This handles sites like Wikipedia and DuckDuckGo that hide search inputs
+ * behind a link→dialog pattern. Capped at one fallback hop.
+ */
+async function clickToReveal(
+  page: Page,
+  intent: TypeIntent,
+  model: PageModel,
+): Promise<RevealResult | null> {
+  // Re-ground the same target as a CLICK intent (no typeability penalty —
+  // we want links/buttons, not inputs)
+  const clickIntent: ClickIntent = {
+    kind: 'click',
+    target: intent.target,
+    // No roleHint — accept any clickable element
+  };
+  const clickGround = groundIntent(clickIntent, model);
+  if (clickGround.status !== 'match') return null;
+
+  // Don't click on typeable elements (inputs) — we're looking for a trigger,
+  // not the field itself (which we already failed to find as typeable)
+  if (TYPEABLE_ROLES.includes(clickGround.node.role)) return null;
+
+  // Click the element to reveal the dialog/form
+  const clickResult = await clickByRef(page, clickGround.ref);
+  if (!clickResult.success) return null;
+
+  // Wait for the page to settle (dialog opens, DOM mutates)
+  await waitForPageSettled(page);
+
+  // Re-build the model and re-ground the ORIGINAL type intent
+  const newModel = await buildPageModel(page);
+  const reGround = groundIntent(intent, newModel);
+
+  if (reGround.status === 'match') {
+    return { newModel, ground: reGround, clickedRef: clickGround.ref };
+  }
+
+  // Even if re-grounding didn't find a match, return the result so the caller
+  // can report that a click happened but the field still wasn't found.
+  return { newModel, ground: reGround, clickedRef: clickGround.ref };
 }
 
 /**
@@ -60,6 +117,59 @@ export async function executeGoto(
   const ground = groundIntent(intent, currentModel);
 
   if (ground.status === 'notFound') {
+    // Click-to-reveal fallback (multi-step intent composition):
+    // For type intents, the target field (e.g. "search") might be hidden behind
+    // a link→dialog pattern (Wikipedia, DuckDuckGo). Try clicking a matching
+    // link/button to reveal it, then re-ground and type.
+    if (intent.kind === 'type') {
+      const revealed = await clickToReveal(page, intent, currentModel);
+      if (revealed) {
+        if (revealed.ground.status === 'match') {
+          // Found the field after clicking to reveal — type into it
+          const typeResult = await typeByRef(page, revealed.ground.ref, intent.text);
+          if (typeResult.success) {
+            // Verify — wait for settle, compute delta from the post-click model
+            await waitForPageSettled(page);
+            const finalModel = await buildPageModel(page);
+            const delta = computeDelta(revealed.newModel, finalModel);
+
+            const parts: string[] = [];
+            parts.push(`auto-opened dialog via [${revealed.clickedRef}], then ${typeResult.message}`);
+            if (delta.urlChanged) {
+              parts.push(`navigated to ${finalModel.url}`);
+            } else if (delta.nodes.length > 0) {
+              const deltaStr = renderDelta(delta);
+              parts.push(deltaStr.split('\n').slice(0, 8).join('\n'));
+            } else {
+              parts.push('(no visible changes detected)');
+            }
+            return {
+              success: true,
+              message: parts.join('\n'),
+              intent,
+              ground: revealed.ground,
+              delta,
+              newModel: finalModel,
+            };
+          }
+        }
+        // Clicked but re-grounding still failed — report what happened
+        const revealMsg = revealed.ground.status === 'notFound'
+          ? `auto-clicked [${revealed.clickedRef}] to open a dialog, but still couldn't find "${intent.target}" —\n${renderGroundResult(revealed.ground)}\n→ try "abt look --visual" to see the dialog contents.`
+          : revealed.ground.status === 'ambiguous'
+            ? `auto-clicked [${revealed.clickedRef}] to open a dialog, but found multiple matches for "${intent.target}" —\n${renderGroundResult(revealed.ground)}\n→ specify which one or run "abt look --visual".`
+            : `auto-clicked [${revealed.clickedRef}] but couldn't complete the type action.`;
+        return {
+          success: false,
+          message: revealMsg,
+          intent,
+          ground: revealed.ground,
+          newModel: revealed.newModel,
+        };
+      }
+    }
+
+    // No fallback attempted (non-type intent) or fallback found nothing to click
     const closestMsg = ground.closest.length > 0
       ? `\n${renderGroundResult(ground)}`
       : '';
