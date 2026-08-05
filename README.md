@@ -2,7 +2,7 @@
 
 An agent-first browser testing tool — optimized for LLM agents, not test scripts.
 
-> **Status:** Phase 1 (MVP) + Phase 2 (vision fallback) + Phase 3 (NL goto intents). The core loop works: navigate → look → click/type by stable ref → see compact deltas. Canvas/WebGL/shadow-DOM pages auto-suggest a marked screenshot (`abt look --visual`). NL intents collapse the loop: `goto "click the sign in button"` runs perceive→ground→act→verify internally. Dialog-based search auto-resolves via click-to-reveal fallback. See [DESIGN.md](DESIGN.md) for the full design and [COMPARISON.md](COMPARISON.md) for a head-to-head vs agent-browser.
+> **Status:** Phase 1 (MVP) + Phase 2 (vision fallback) + Phase 3 (NL goto intents) + Phase 4 (Steel Browser backend). The core loop works: navigate → look → click/type by stable ref → see compact deltas. Canvas/WebGL/shadow-DOM pages auto-suggest a marked screenshot (`abt look --visual`). NL intents collapse the loop: `goto "click the sign in button"` runs perceive→ground→act→verify internally. Dialog-based search auto-resolves via click-to-reveal fallback. **Phase 4** adds a pluggable backend: drive a self-hosted [Steel Browser](https://github.com/steel-dev/steel-browser) chrome farm for session management, anti-detect (fingerprint injection), and per-session proxy rotation — or use the default local Chrome backend. See [DESIGN.md](DESIGN.md) for the full design and [COMPARISON.md](COMPARISON.md) for a head-to-head vs agent-browser.
 
 ## Quick start
 
@@ -57,8 +57,12 @@ abt extract <schema>     Structured extraction (planned)
 
 ```
 src/
-├── cli.ts                  CLI entry point + command dispatch
-├── session/session.ts      Persistent session (detached Chrome + connectOverCDP)
+├── cli.ts                  CLI entry point + command dispatch + flag parsing
+├── config.ts               Config layering (defaults < env vars < CLI flags) for Steel + browser settings
+├── session/
+│   ├── session.ts          SessionManager — backend-agnostic, picks Steel or local Chrome with auto-fallback
+│   ├── backend.ts          BrowserBackend interface + LocalChromeBackend (detached Chrome + connectOverCDP)
+│   └── steel.ts            SteelBackend — REST API client (health/create/release) + connectOverCDP via websocketUrl
 ├── model/
 │   ├── page-model.ts       Spatial-semantic page model (DOM walk + interactivity + regions + media-rich detection)
 │   ├── interactivity.ts    Interactivity inference logic (injected into browser)
@@ -85,21 +89,21 @@ npx tsx scripts/test-cdp.ts   # Test CDP connection + ariaSnapshot
 npx tsx scripts/test-model.ts # Test page model + interactivity inference
 ```
 
-## Docker (for Linux deployment)
+## Docker — Steel Browser (Phase 4)
 
-The Dockerfile runs chrome-headless-shell with CDP on port 9222. Works on Linux with `network_mode: host`. On Windows/Mac Docker Desktop, Chrome 111+ blocks DevTools connections from Docker's non-loopback proxy — use local `chromium.launch()` instead (the session manager falls back automatically).
+The docker-compose runs [Steel Browser](https://github.com/steel-dev/steel-browser) (Apache-2.0, free to self-host) — a chrome farm with session management, anti-detect (fingerprint injection), and proxy rotation. Ports: 3000 (REST API + UI), 9223 (CDP websocket proxy). Steel handles the Chrome 111+ non-loopback CDP restriction internally via its own CDP proxy, so it works on Windows/Mac Docker Desktop (unlike raw Chromium in Docker).
 
 ```bash
-docker compose up --build -d   # Start Chrome in Docker
-./scripts/launch-chrome.sh     # Build + start + health check
-```
-
+docker compose up -d                    # Start Steel Browser
+# UI: http://localhost:3000/ui          # Visual session viewer
+# Then drive it with the CLI:
+npx tsx src/cli.ts goto https://example.com --steel
 ## Roadmap
 
 - [x] **Phase 1 (MVP)**: Page model + ref-based actions + persistent session + delta output
 - [x] **Phase 2**: Vision fallback (marked screenshots for canvas/shadow-DOM ambiguity)
 - [x] **Phase 3**: High-level `goto "nl goal"` (internal perceive→ground→act→verify loop) + `--interactive-only` flag + click-to-reveal multi-step intent composition
-- [ ] **Phase 4**: Steel.dev chrome farm + anti-detect + proxy rotation
+- [x] **Phase 4**: Steel Browser backend (self-hosted chrome farm, anti-detect, proxy rotation, `--steel`/`--proxy`/`--user-agent` flags, `release` command, backend abstraction)
 - [ ] **Phase 5**: Skill packaging (CLI + injected instructions, like agent-browser ships)
 - [ ] **Phase 6**: Scale path (Browserbase managed, optional Rust CDP orchestrator)
 

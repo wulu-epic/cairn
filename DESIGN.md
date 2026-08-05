@@ -141,7 +141,7 @@ Like agent-browser, this ships as: a **CLI binary + a skill that injects usage i
 1. **MVP — structured model + ref-based actions.** Playwright+CDP, `ariaSnapshot` base + inferred interactivity, `focus`/`click`/`type`/`look`/`status` commands, persistent session, delta output. Self-hosted chrome-headless-shell in Docker. No vision yet. ✅ done.
 2. **Vision fallback.** Marked screenshot on demand; canvas/WebGL/shadow-DOM detection → vision path. ✅ done.
 3. **High-level `goto` intent.** Internal perceive→ground→act→verify loop with one cheap vision call max.
-4. **Steel Browser integration + anti-detect.** Self-hosted chrome farm (Apache-2.0, free — `steel-dev/steel-browser`), session mgmt, proxy rotation.
+4. **Steel Browser integration + anti-detect.** Self-hosted chrome farm (Apache-2.0, free — `steel-dev/steel-browser`), session mgmt, proxy rotation. ✅ done.
 5. **Skill packaging.** CLI + injected instructions; polish the agent-facing surface.
 6. **Scale path.** Browserbase for managed; optional Rust CDP-orchestrator if profiling demands.
 
