@@ -117,8 +117,13 @@ function roleMatches(nodeRole: string, roleHint?: string): boolean {
  *   - Substring match bonus:                    up to 0.25
  *   - Role hint match bonus:                    up to 0.15
  *   - Region hint match bonus:                  up to 0.10
+ *   - Intent-aware typeability (type intents):  +0.20 typeable / -0.30 not
  *   - Penalty for non-interactive:              -0.20
  */
+
+// Roles that accept text input — for type intents, strongly prefer these.
+const TYPEABLE_ROLES = ['textbox', 'searchbox', 'combobox', 'spinbutton', 'textarea'];
+
 function scoreNode(node: EnhancedNode, intent: Intent): GroundCandidate {
   let score = 0;
   const reasons: string[] = [];
@@ -152,6 +157,24 @@ function scoreNode(node: EnhancedNode, intent: Intent): GroundCandidate {
     if (roleMatches(node.role, intent.roleHint)) {
       score += 0.15;
       reasons.push(`role match: ${node.role}`);
+    }
+  }
+
+  // Intent-aware typeability: for type intents, strongly prefer elements
+  // that can actually accept text input. Without this, the grounder matches
+  // "search" to a "Search" span/label instead of the actual <input> field.
+  // The penalty is aggressive (-0.55) because token overlap + substring can
+  // reach 0.80, so we need to push non-typeable matches below the 0.35
+  // threshold when no real input field exists.
+  if (intent.kind === 'type') {
+    const isTypeable = TYPEABLE_ROLES.includes(node.role)
+      || node.interactivitySignals?.isEditable;
+    if (isTypeable) {
+      score += 0.20;
+      reasons.push('typeable role');
+    } else {
+      score -= 0.55;
+      reasons.push('non-typeable for type intent');
     }
   }
 
