@@ -35,6 +35,7 @@ const rawArgs = process.argv.slice(2);
 
 let sessionId = 'default';
 let visualMode = false;
+let interactiveOnly = false;
 const cmdArgs: string[] = [];
 for (let i = 0; i < rawArgs.length; i++) {
   if (rawArgs[i] === '--session' && i + 1 < rawArgs.length) {
@@ -42,6 +43,8 @@ for (let i = 0; i < rawArgs.length; i++) {
     i++;
   } else if (rawArgs[i] === '--visual') {
     visualMode = true;
+  } else if (rawArgs[i] === '--interactive-only' || rawArgs[i] === '-i') {
+    interactiveOnly = true;
   } else {
     cmdArgs.push(rawArgs[i]);
   }
@@ -62,7 +65,8 @@ Commands:
   focus <region|ref>   Zoom into a region/subtree (token-efficient)
   click <ref>          Deterministic click by stable ref
   type <ref> <text>    Fill a field by ref
-  look [--visual]       Show page tree; --visual adds a marked screenshot
+  look [--visual] [-i]  Show page tree; --visual adds a marked screenshot,
+                        -i shows only interactive elements (compact)
   status               Show session state (URL, focused region, last delta)
   goto <url|"nl goal">  Navigate to URL or run an NL intent
   extract <schema>     Structured data extraction (Phase 3)
@@ -71,6 +75,7 @@ Options:
   --session <id>       Session ID (default: default)
   --visual             Capture a marked screenshot (numbered boxes over
                        interactive elements, labeled with the same refs)
+  --interactive-only, -i  Show only interactive elements (compact, ~3x smaller)
   --help, -h           Show this help
 
 Design: act by stable ref, never by coordinate. Every output is self-describing.`);
@@ -124,7 +129,7 @@ async function main(): Promise<void> {
         console.log(renderLegend(shot.legend));
         console.log('View the image, then act by ref, e.g. "abt click e15" — never by coordinate.');
       } else {
-        const output = renderPage(model, { focusedRegion: savedState?.focusedRegion });
+        const output = renderPage(model, { focusedRegion: savedState?.focusedRegion, interactiveOnly });
         console.log(output);
       }
       break;

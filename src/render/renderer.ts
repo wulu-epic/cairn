@@ -13,7 +13,7 @@
  */
 
 import type { PageModel, EnhancedNode } from '../model/page-model.js';
-import { isMediaRich } from '../model/page-model.js';
+import { isMediaRich, getInteractiveNodes } from '../model/page-model.js';
 
 const REGION_ORDER = ['header', 'nav', 'main', 'sidebar', 'footer', 'modal', 'form'];
 const REGION_LABELS: Record<string, string> = {
@@ -31,6 +31,7 @@ export interface RenderOptions {
   maxDepth?: number;
   showAll?: boolean; // if true, show non-interactive nodes too (for debugging)
   visualMode?: boolean; // if true, suppress the "run abt look --visual" hint (already in visual mode)
+  interactiveOnly?: boolean; // if true, show only interactive elements (compact, ~3x smaller)
 }
 
 /** Render the full page model as a compact hierarchical tree. */
@@ -56,6 +57,52 @@ export function renderPage(model: PageModel, options: RenderOptions = {}): strin
       ? 'see marked screenshot above for visual grounding'
       : 'run "abt look --visual" for a marked screenshot';
     lines.push(`⚠ media-rich page (${parts.join(', ')}) — structured model is blind to these; ${hint}`);
+  }
+
+  // Interactive-only mode: compact flat list of just the actionable elements,
+  // grouped by region. Matches agent-browser's `-i` compactness (~3x smaller
+  // than the full tree). Skips all text nodes, containers, and headings.
+  if (options.interactiveOnly) {
+    const allInteractive = getInteractiveNodes(model);
+    const interactive = options.focusedRegion
+      ? allInteractive.filter((n) => n.region === options.focusedRegion)
+      : allInteractive;
+
+    if (interactive.length === 0) {
+      lines.push('(no interactive elements found)');
+    } else {
+      // Group by region for context, then list each element on one line
+      const byRegion = new Map<string, EnhancedNode[]>();
+      for (const node of interactive) {
+        const r = node.region ?? 'main';
+        if (!byRegion.has(r)) byRegion.set(r, []);
+        byRegion.get(r)!.push(node);
+      }
+      const sorted = [...byRegion.entries()].sort((a, b) => {
+        const ai = REGION_ORDER.indexOf(a[0]);
+        const bi = REGION_ORDER.indexOf(b[0]);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      });
+      for (const [region, nodes] of sorted) {
+        lines.push(`▼ ${REGION_LABELS[region] ?? region}`);
+        for (const node of nodes) {
+          const parts: string[] = [node.role];
+          if (node.name) parts.push(`"${truncate(node.name, 50)}"`);
+          else if (node.text) parts.push(`"${truncate(node.text, 50)}"`);
+          parts.push(`[ref=${node.ref}]`);
+          const sig = node.interactivitySignals;
+          if (sig?.cursorPointer && !sig.nativeInteractive && !sig.ariaInteractive) {
+            parts.push('(inferred)');
+          }
+          lines.push(`  ${parts.join(' ')}`);
+        }
+        lines.push('');
+      }
+    }
+
+    lines.push(`---`);
+    lines.push(`${interactive.length} interactive elements. Use "abt click <ref>" or "abt type <ref> <text>".`);
+    return lines.join('\n');
   }
 
   if (options.focusedRegion) {
