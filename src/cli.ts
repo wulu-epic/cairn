@@ -2,11 +2,33 @@
 
 /**
  * ai-browser-tester — agent-first browser testing tool
+ *
+ * An agent-optimized CLI for browser automation. The agent navigates pages
+ * by stable ref (never coordinates), gets compact hierarchical output, and
+ * benefits from a persistent session across commands.
+ *
  * Usage: abt <command> [args] [--session <id>]
  */
 
-const args = process.argv.slice(2);
-const command = args[0];
+import { SessionManager } from './session/session.js';
+
+// ─── Arg parsing ───────────────────────────────────────────────
+
+const rawArgs = process.argv.slice(2);
+
+let sessionId = 'default';
+const cmdArgs: string[] = [];
+for (let i = 0; i < rawArgs.length; i++) {
+  if (rawArgs[i] === '--session' && i + 1 < rawArgs.length) {
+    sessionId = rawArgs[i + 1];
+    i++;
+  } else {
+    cmdArgs.push(rawArgs[i]);
+  }
+}
+
+const command = cmdArgs[0];
+const commandArgs = cmdArgs.slice(1);
 
 const COMMANDS = ['focus', 'click', 'type', 'look', 'status', 'goto', 'extract'] as const;
 type Command = (typeof COMMANDS)[number];
@@ -22,13 +44,14 @@ Commands:
   type <ref> <text>    Fill a field by ref
   look                 Show current page tree (the "I'm confused" command)
   status               Show session state (URL, focused region, last delta)
-  goto "<nl goal>"     High-level intent (perceive+ground+act+verify internally)
-  extract <schema>     Structured data extraction
+  goto <url>           Navigate to a URL
+  extract <schema>     Structured data extraction (Phase 2)
 
 Options:
   --session <id>       Session ID (default: default)
   --help, -h           Show this help
-`);
+
+Design: act by stable ref, never by coordinate. Every output is self-describing.`);
 }
 
 if (!command || command === '--help' || command === '-h') {
@@ -42,5 +65,111 @@ if (!COMMANDS.includes(command as Command)) {
   process.exit(1);
 }
 
-// TODO: implement command dispatch (p3)
-console.error(`[stub] command="${command}" args=${JSON.stringify(args.slice(1))}`);
+// ─── Command handlers ──────────────────────────────────────────
+
+const session = new SessionManager(sessionId);
+
+async function main(): Promise<void> {
+  const connection = await session.connect();
+  const page = await session.getPage(connection.browser);
+
+  // Restore saved URL if the page is blank
+  const savedState = session.loadState();
+  if (savedState?.currentUrl && page.url() === 'about:blank') {
+    try {
+      await page.goto(savedState.currentUrl, { waitUntil: 'domcontentloaded' });
+    } catch {
+      // ignore navigation errors on restore
+    }
+  }
+
+  switch (command as Command) {
+    case 'look': {
+      // Show the current page as a compact role-based tree with refs.
+      // (p5 will replace this with the custom hierarchical renderer + region clustering)
+      const snapshot = await page.ariaSnapshot({ mode: 'ai' });
+      console.log(`page: ${page.url()}`);
+      if (savedState?.focusedRegion) {
+        console.log(`(region: ${savedState.focusedRegion})`);
+      }
+      console.log('---');
+      console.log(snapshot);
+      break;
+    }
+
+    case 'status': {
+      const state = session.loadState();
+      console.log(`Session:    ${sessionId}`);
+      console.log(`URL:        ${page.url()}`);
+      console.log(`Title:      ${await page.title().catch(() => 'N/A')}`);
+      console.log(`Region:     ${state?.focusedRegion ?? 'none'}`);
+      console.log(`Connection: ${connection.viaCDP ? 'CDP (persistent)' : 'launch (ephemeral)'}`);
+      break;
+    }
+
+    case 'goto': {
+      const url = commandArgs[0];
+      if (!url) {
+        console.error('Usage: abt goto <url>');
+        process.exit(1);
+      }
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      const title = await page.title().catch(() => 'N/A');
+      console.log(`navigated: ${page.url()}`);
+      console.log(`title:     ${title}`);
+      session.saveState({ currentUrl: page.url(), focusedRegion: null });
+      break;
+    }
+
+    case 'focus': {
+      const target = commandArgs[0];
+      if (!target) {
+        console.error('Usage: abt focus <region|ref>');
+        process.exit(1);
+      }
+      // p5 will implement region clustering + subtree zoom.
+      // For now, record the focused region in session state.
+      session.saveState({ focusedRegion: target });
+      console.log(`focused: ${target}`);
+      console.log('(use "abt look" to see the focused subtree — full renderer in p5)');
+      break;
+    }
+
+    case 'click': {
+      const ref = commandArgs[0];
+      if (!ref) {
+        console.error('Usage: abt click <ref>');
+        process.exit(1);
+      }
+      console.error('[stub] click — ref-based actions implemented in p6');
+      console.error(`  would click: ${ref}`);
+      process.exit(1);
+    }
+
+    case 'type': {
+      const ref = commandArgs[0];
+      const text = commandArgs.slice(1).join(' ');
+      if (!ref || !text) {
+        console.error('Usage: abt type <ref> <text>');
+        process.exit(1);
+      }
+      console.error('[stub] type — ref-based actions implemented in p6');
+      console.error(`  would type "${text}" into: ${ref}`);
+      process.exit(1);
+    }
+
+    case 'extract': {
+      console.error('[stub] extract — structured extraction is Phase 2');
+      process.exit(1);
+    }
+  }
+
+  await session.disconnect(connection);
+}
+
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    process.exit(1);
+  });
