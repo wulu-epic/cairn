@@ -23,6 +23,7 @@ import { dragByRef } from './actions/drag.js';
 import { waitForPageSettled, computeDelta, renderDelta } from './model/delta.js';
 import { captureMarkedScreenshot, renderLegend } from './vision/screenshot.js';
 import { executeGoto } from './intent/execute.js';
+import { extractData } from './intent/extract.js';
 import { resolveConfig, parseFlags } from './config.js';
 import { categorizeError, renderError, CairnError } from './errors.js';
 
@@ -392,8 +393,25 @@ async function main(): Promise<void> {
     }
 
     case 'extract': {
-      console.error('[stub] extract — structured extraction will be implemented in the next step');
-      process.exit(1);
+      const schema = commandArgs.join(' ');
+      if (!schema) {
+        console.error('Usage: cairn extract <schema>');
+        console.error('  Examples:');
+        console.error('    cairn extract "title, price, description"');
+        console.error('    cairn extract "heading: h1, price: textbox"');
+        console.error('    cairn extract "button: e15"');
+        console.error('    cairn extract "table"');
+        process.exit(1);
+      }
+      const result = await extractData(page, schema);
+      if (result.success) {
+        console.log(JSON.stringify(result.data, null, 2));
+        console.error(`✓ ${result.message}`);
+      } else {
+        console.error(`✗ ${result.message}`);
+        process.exit(1);
+      }
+      break;
     }
 
     case 'release': {
