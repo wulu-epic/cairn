@@ -1,7 +1,7 @@
 /**
  * Dialog Handling — auto-accept or auto-dismiss JS dialogs.
  *
- * PRODUCTION.md §3 item 8: "Wire page.on('dialog'), setInputFiles,
+ * docs/PRODUCTION.md §3 item 8: "Wire page.on('dialog'), setInputFiles,
  * download events, and storageState persistence."
  *
  * JavaScript dialogs (alert, confirm, prompt, beforeunload) block the

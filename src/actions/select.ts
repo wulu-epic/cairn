@@ -5,7 +5,7 @@
  * Works on native <select> elements. The value can be the option's value,
  * label (visible text), or index.
  *
- * DESIGN.md §4.5: the agent never outputs coordinates. Select is a one-line
+ * docs/DESIGN.md §4.5: the agent never outputs coordinates. Select is a one-line
  * Playwright call behind a ref.
  */
 

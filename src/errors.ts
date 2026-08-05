@@ -1,7 +1,7 @@
 /**
  * Error Taxonomy — categorized, agent-actionable errors.
  *
- * PRODUCTION.md §2A: "Errors are opaque strings. The agent can't decide
+ * docs/PRODUCTION.md §2A: "Errors are opaque strings. The agent can't decide
  * 'retry' vs 'look --visual' vs 'give up' from 'Error: Target closed'."
  *
  * This module replaces the opaque top-level string dump (cli.ts) with

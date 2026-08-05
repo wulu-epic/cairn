@@ -1,7 +1,7 @@
 /**
  * Intent Executor — the full perceive→ground→act→verify loop in one call.
  *
- * DESIGN.md §4.5: "the agent states intent in English, the tool runs the
+ * docs/DESIGN.md §4.5: "the agent states intent in English, the tool runs the
  * perceive/ground/act/verify loop internally (using deterministic logic),
  * and returns 'done: clicked Sign in, now on /dashboard' or 'ambiguous: two
  * Sign in buttons, which?'"

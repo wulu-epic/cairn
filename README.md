@@ -2,7 +2,7 @@
 
 An agent-first browser testing tool — optimized for LLM agents, not test scripts.
 
-> **Status:** Phase 1 (MVP) + Phase 2 (vision fallback) + Phase 3 (NL goto intents) + Phase 4 (Steel Browser backend) + Phase 5 (skill packaging). The core loop works: navigate → look → click/type by stable ref → see compact deltas. Canvas/WebGL/shadow-DOM pages auto-suggest a marked screenshot (`cairn look --visual`). NL intents collapse the loop: `goto "click the sign in button"` runs perceive→ground→act→verify internally. Dialog-based search auto-resolves via click-to-reveal fallback. **Phase 4** adds a pluggable backend: drive a self-hosted [Steel Browser](https://github.com/steel-dev/steel-browser) chrome farm for session management, anti-detect (fingerprint injection), and per-session proxy rotation — or use the default local Chrome backend. **Phase 5** packages Cairn as an installable skill (`skills/cairn/SKILL.md` + agent usage instructions), modeled on the agent-browser skill format. See [DESIGN.md](DESIGN.md) for the full design and [COMPARISON.md](COMPARISON.md) for a head-to-head vs agent-browser.
+> **Status:** Phase 1 (MVP) + Phase 2 (vision fallback) + Phase 3 (NL goto intents) + Phase 4 (Steel Browser backend) + Phase 5 (skill packaging). The core loop works: navigate → look → click/type by stable ref → see compact deltas. Canvas/WebGL/shadow-DOM pages auto-suggest a marked screenshot (`cairn look --visual`). NL intents collapse the loop: `goto "click the sign in button"` runs perceive→ground→act→verify internally. Dialog-based search auto-resolves via click-to-reveal fallback. **Phase 4** adds a pluggable backend: drive a self-hosted [Steel Browser](https://github.com/steel-dev/steel-browser) chrome farm for session management, anti-detect (fingerprint injection), and per-session proxy rotation — or use the default local Chrome backend. **Phase 5** packages Cairn as an installable skill (`skills/cairn/SKILL.md` + agent usage instructions), modeled on the agent-browser skill format. See [DESIGN.md](docs/DESIGN.md) for the full design and [COMPARISON.md](docs/COMPARISON.md) for a head-to-head vs agent-browser.
 
 ## Quick start
 
@@ -107,4 +107,4 @@ npx tsx src/cli.ts goto https://example.com --steel
 - [x] **Phase 5**: Skill packaging (renamed to Cairn, `skills/cairn/SKILL.md` + agent usage instructions + reference doc, like agent-browser ships)
 - [ ] **Phase 6**: Scale path (Browserbase managed, optional Rust CDP orchestrator)
 
-See [DESIGN.md](DESIGN.md) §7 for the full roadmap.
+See [DESIGN.md](docs/DESIGN.md) §7 for the full roadmap.

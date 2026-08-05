@@ -10,7 +10,7 @@
  * (`cairn focus <ref>`) then presses a key. For typing text into a field,
  * use `cairn type` instead.
  *
- * DESIGN.md §4.5: keypress is a one-line Playwright call. Common use cases:
+ * docs/DESIGN.md §4.5: keypress is a one-line Playwright call. Common use cases:
  *   - Submit a form: `cairn keypress Enter` (after typing in a field)
  *   - Close a dialog: `cairn keypress Escape`
  *   - Tab between fields: `cairn keypress Tab`

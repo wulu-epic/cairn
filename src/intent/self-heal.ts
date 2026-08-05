@@ -1,5 +1,5 @@
 /**
- * Transparent Self-Heal — REVOLUTION.md Leap 3.
+ * Transparent Self-Heal — docs/REVOLUTION.md Leap 3.
  *
  * When a ref is stale (the page changed since the model was built) or an
  * action fails (E_REF_STALE, E_CLICK_FAILED), self-heal automatically:

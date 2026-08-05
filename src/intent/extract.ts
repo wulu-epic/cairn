@@ -1,8 +1,8 @@
 /**
  * Structured Data Extraction — schema → JSON.
  *
- * PRODUCTION.md §3 item 5: "Schema → JSON structured extraction. Natural
- * complement to goto; completes the command surface from DESIGN.md §4.5."
+ * docs/PRODUCTION.md §3 item 5: "Schema → JSON structured extraction. Natural
+ * complement to goto; completes the command surface from docs/DESIGN.md §4.5."
  *
  * Given a schema description (field names + optional hints), walk the page
  * model and extract matching data into JSON. Supports:
@@ -20,7 +20,7 @@
  *      Detects <table> or <ul>/<ol> structures and extracts all rows/items.
  *
  * The extraction is deterministic (no LLM call) — it uses the page model's
- * name/text/role fields. This is the DOM/AX approach from PRODUCTION.md §5
+ * name/text/role fields. This is the DOM/AX approach from docs/PRODUCTION.md §5
  * ("Extract strategy: Pure DOM/AX extraction, deterministic, cheap").
  */
 

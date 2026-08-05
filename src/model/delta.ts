@@ -7,7 +7,7 @@
  * (changed/added/removed elements). An action that changes one field costs
  * ~one line of output, not a full page dump.
  *
- * DESIGN.md §3.6: "Deltas, not snapshots. After an action, send only what
+ * docs/DESIGN.md §3.6: "Deltas, not snapshots. After an action, send only what
  * changed (MutationObserver/IntersectionObserver quiet → re-snapshot filtered
  * elements → diff by stable ref → emit delta)."
  */

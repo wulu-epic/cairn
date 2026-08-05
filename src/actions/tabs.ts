@@ -1,7 +1,7 @@
 /**
  * Tab Management — list, switch, close, and open browser tabs.
  *
- * PRODUCTION.md §3 item 6: "Tabs + iframes. Add tab commands
+ * docs/PRODUCTION.md §3 item 6: "Tabs + iframes. Add tab commands
  * (list/switch/close/new). Popups and embedded forms are common."
  *
  * Uses Playwright's BrowserContext API:

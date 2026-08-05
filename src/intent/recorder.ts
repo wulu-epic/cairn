@@ -1,5 +1,5 @@
 /**
- * Task Recording + Replay — REVOLUTION.md Leap 2.
+ * Task Recording + Replay — docs/REVOLUTION.md Leap 2.
  *
  * Record a successful agent run (every ref used, every fallback taken, every
  * DOM delta observed) and replay it later with zero LLM calls. Turns a 15-step

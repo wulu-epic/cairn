@@ -12,7 +12,7 @@
  * installed, the fallback is silently skipped — deterministic grounding
  * still works.
  *
- * COMPARISON.md item 8 / PRODUCTION.md Tier 1.2.
+ * docs/COMPARISON.md item 8 / docs/PRODUCTION.md Tier 1.2.
  */
 
 import type { PageModel, EnhancedNode } from '../model/page-model.js';

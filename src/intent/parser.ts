@@ -1,7 +1,7 @@
 /**
  * NL Intent Parser — deterministic natural-language → structured Intent.
  *
- * DESIGN.md §4.5: the `goto "<nl goal>"` command collapses 4-5 agent steps
+ * docs/DESIGN.md §4.5: the `goto "<nl goal>"` command collapses 4-5 agent steps
  * into one by running perceive→ground→act→verify internally. This parser is
  * the first stage: it converts a free-text goal into a structured Intent that
  * the grounder and executor can act on — using deterministic pattern matching,

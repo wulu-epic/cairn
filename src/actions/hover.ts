@@ -5,7 +5,7 @@
  * Triggers CSS :hover states and JS mouseenter/mouseover handlers — essential
  * for dropdown menus, tooltips, and hover-reveal UIs.
  *
- * DESIGN.md §4.5: the agent never outputs coordinates. Hover is a one-line
+ * docs/DESIGN.md §4.5: the agent never outputs coordinates. Hover is a one-line
  * Playwright call behind a ref.
  */
 

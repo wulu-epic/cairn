@@ -1,7 +1,7 @@
 /**
  * Element Grounding — fuzzy-match an Intent's target to a page-model ref.
  *
- * DESIGN.md §4.3: grounding (not perception) is the bottleneck. This module
+ * docs/DESIGN.md §4.3: grounding (not perception) is the bottleneck. This module
  * takes a parsed Intent (e.g. { target: "sign in", roleHint: "button" }) and
  * finds the best-matching interactive node in the page model by ref.
  *

@@ -7,7 +7,7 @@
  *   - Sliders (drag the handle)
  *   - Kanban boards (drag a card between columns)
  *
- * DESIGN.md §4.5: the agent never outputs coordinates. Drag is a one-line
+ * docs/DESIGN.md §4.5: the agent never outputs coordinates. Drag is a one-line
  * Playwright call behind two refs (source + target).
  *
  * Note: many modern drag-and-drop implementations use HTML5 drag events

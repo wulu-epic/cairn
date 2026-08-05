@@ -9,7 +9,7 @@
  * (`cairn click e15`) — never by coordinate. This is what eliminates location
  * hallucination: vision perceives, refs ground.
  *
- * DESIGN.md §4.4: "falls back to a marked screenshot only when the structured
+ * docs/DESIGN.md §4.4: "falls back to a marked screenshot only when the structured
  * model is blind (canvas/WebGL/shadow-DOM) or the agent requests a visual look."
  */
 

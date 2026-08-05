@@ -2,7 +2,7 @@
  * Agent-Facing Hierarchical Renderer
  *
  * Takes the spatial-semantic page model and produces a compact, bash-like,
- * hierarchical tree view with [ref=eN] refs — matching DESIGN.md §4.2 format.
+ * hierarchical tree view with [ref=eN] refs — matching docs/DESIGN.md §4.2 format.
  *
  * Features:
  *   - Region clustering: groups nodes by region (nav/main/sidebar/footer/modal)

@@ -1,7 +1,7 @@
 /**
  * HVAC Demo Regression Suite — Cairn vs the 9 planted bugs.
  *
- * This is the ground-truth test site from HVAC_BUGREPORT.md (hvac-demo/),
+ * This is the ground-truth test site from docs/HVAC_BUGREPORT.md (hvac-demo/),
  * repurposed as a reusable regression suite. Each test asserts Cairn can
  * (1) model/surface each bug-relevant element and (2) interact + observe
  * the buggy behavior. The two fixes under test:

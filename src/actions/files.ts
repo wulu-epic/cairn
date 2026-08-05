@@ -1,7 +1,7 @@
 /**
  * File Upload & Download — handle file input and download events.
  *
- * PRODUCTION.md §3 item 8: "Wire page.on('dialog'), setInputFiles,
+ * docs/PRODUCTION.md §3 item 8: "Wire page.on('dialog'), setInputFiles,
  * download events, and storageState persistence."
  *
  * Upload: resolves ref → <input type="file"> → Playwright setInputFiles.
