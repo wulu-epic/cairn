@@ -1,4 +1,4 @@
-# Comparison: agent-browser vs ai-browser-tester
+# Comparison: agent-browser vs Cairn
 
 Head-to-head comparison on the same task: **search Wikipedia for "artificial intelligence"** (navigate to https://www.wikipedia.org, find the search box, type into it, observe results).
 
@@ -21,12 +21,12 @@ Both tools were run via bash CLI. Metrics captured on 2025-08-05.
 
 The agent must re-snapshot after every action to see what changed. Refs are fresh on every snapshot — `@e34` from step 2 is stale by step 4.
 
-### ai-browser-tester (our tool, MVP)
+### Cairn (our tool, MVP)
 
 | Step | Command | Output |
 |------|---------|--------|
-| 1 | `abt goto https://www.wikipedia.org` | 13696 bytes — full hierarchical tree with regions + refs (self-describing) |
-| 2 | `abt type e64 "artificial intelligence"` | `✓ typed "artificial intelligence" into [e64] input` + delta output |
+| 1 | `cairn goto https://www.wikipedia.org` | 13696 bytes — full hierarchical tree with regions + refs (self-describing) |
+| 2 | `cairn type e64 "artificial intelligence"` | `✓ typed "artificial intelligence" into [e64] input` + delta output |
 
 **Total: 2 commands, ~14K bytes output (~3500 tokens)** for the full task.
 
@@ -38,45 +38,45 @@ The agent must re-snapshot after every action to see what changed. Refs are fres
 
 ### 1. Commands per task
 - **agent-browser**: 4 (open, snapshot, fill, re-snapshot)
-- **ai-browser-tester**: 2 (goto, type)
-- **Winner: ai-browser-tester** — 50% fewer commands. `goto` is self-describing (shows the tree), and `type` shows the delta (no re-snapshot needed).
+- **Cairn**: 2 (goto, type)
+- **Winner: Cairn** — 50% fewer commands. `goto` is self-describing (shows the tree), and `type` shows the delta (no re-snapshot needed).
 
 ### 2. Token efficiency (page representation)
 - **agent-browser `snapshot -i`**: 4699 bytes (~1175 tokens) — interactive elements only, flat AX tree, no region structure
-- **ai-browser-tester `look` (full)**: 13637 bytes (~3400 tokens) — ALL nodes with regions, inferred interactivity markers
-- **ai-browser-tester `focus main` + `look` (zoomed)**: ~4K bytes (~1000 tokens) — only the focused region subtree
-- **Winner: agent-browser** for raw compactness on the interactive-only view. But **ai-browser-tester** wins on large pages where `focus` zooming cuts the view to just the relevant region.
+- **Cairn `look` (full)**: 13637 bytes (~3400 tokens) — ALL nodes with regions, inferred interactivity markers
+- **Cairn `focus main` + `look` (zoomed)**: ~4K bytes (~1000 tokens) — only the focused region subtree
+- **Winner: agent-browser** for raw compactness on the interactive-only view. But **Cairn** wins on large pages where `focus` zooming cuts the view to just the relevant region.
 
 ### 3. Delta output (after an action)
 - **agent-browser**: No delta support. Must re-snapshot the entire page (~4699 bytes) to see what changed. The agent doesn't know if the fill worked without re-snapshotting.
-- **ai-browser-tester**: Compact delta output — shows only added/removed/changed nodes with `+`/`-`/`~` notation. Typing into a field = ~1-2 lines. Clicking a link = navigation delta (URL change + changed/added nodes).
-- **Winner: ai-browser-tester** — massive token savings on iterative tasks. Each action shows only what changed, not the full page.
+- **Cairn**: Compact delta output — shows only added/removed/changed nodes with `+`/`-`/`~` notation. Typing into a field = ~1-2 lines. Clicking a link = navigation delta (URL change + changed/added nodes).
+- **Winner: Cairn** — massive token savings on iterative tasks. Each action shows only what changed, not the full page.
 
 ### 4. Navigation ease (finding elements)
 - **agent-browser**: Refs (`@e34`) are from the AX tree. Flat list — no region structure. Must scan the full snapshot to find the search box among ~100 elements. Refs are STALE after any page change (must re-snapshot).
-- **ai-browser-tester**: Refs (`[e64]`) are stamped as `data-abt-ref` attributes. Hierarchical tree with region clustering (▼ Header / ▼ Main / ▼ Footer). Agent can `focus main` to zoom into just the relevant region. Refs are stable within the same page (stamped attributes don't change unless the page changes).
-- **Winner: ai-browser-tester** for navigation efficiency (region zooming + hierarchical structure). **Tie** on ref stability — both require re-snapshotting after navigation, but our refs survive within-page mutations better (stamped attributes vs ephemeral AX tree refs).
+- **Cairn**: Refs (`[e64]`) are stamped as `data-cairn-ref` attributes. Hierarchical tree with region clustering (▼ Header / ▼ Main / ▼ Footer). Agent can `focus main` to zoom into just the relevant region. Refs are stable within the same page (stamped attributes don't change unless the page changes).
+- **Winner: Cairn** for navigation efficiency (region zooming + hierarchical structure). **Tie** on ref stability — both require re-snapshotting after navigation, but our refs survive within-page mutations better (stamped attributes vs ephemeral AX tree refs).
 
 ### 5. Interactivity detection
 - **agent-browser**: Uses the Chrome AX tree. Detects standard interactive elements (button, link, textbox). Does NOT detect div-as-button (no role, no aria) — these are invisible in the snapshot.
-- **ai-browser-tester**: Fuses AX tree + computed style + inline handlers + tabindex + contenteditable. DETECTS div-as-button via `cursor:pointer + onclick` even without any ARIA role. Distinguishes `clickable` (native/aria) vs `inferred clickable` (heuristic).
-- **Winner: ai-browser-tester** — catches non-standard interactive elements that attribute-only approaches miss. This is the core differentiator from DESIGN.md.
+- **Cairn**: Fuses AX tree + computed style + inline handlers + tabindex + contenteditable. DETECTS div-as-button via `cursor:pointer + onclick` even without any ARIA role. Distinguishes `clickable` (native/aria) vs `inferred clickable` (heuristic).
+- **Winner: Cairn** — catches non-standard interactive elements that attribute-only approaches miss. This is the core differentiator from DESIGN.md.
 
 ### 6. Action feedback
 - **agent-browser**: `✓ Done` — minimal, no detail about what happened or what's now possible.
-- **ai-browser-tester**: `✓ typed "artificial intelligence" into [e64] input` + delta showing what changed. Self-describing — the agent knows what happened and what to do next.
-- **Winner: ai-browser-tester** — self-describing output reduces the need for follow-up "look" commands.
+- **Cairn**: `✓ typed "artificial intelligence" into [e64] input` + delta showing what changed. Self-describing — the agent knows what happened and what to do next.
+- **Winner: Cairn** — self-describing output reduces the need for follow-up "look" commands.
 
 ### 7. Feature maturity
 - **agent-browser**: Production-grade. Has screenshots, `--annotate` vision overlays, `find` semantic locators, tab management, network mocking, video recording, MCP integration, session restore, React introspection, accessibility audits, plugin system.
-- **ai-browser-tester**: MVP. Has goto, look, focus, click, type, status, delta. No vision, no screenshots, no semantic locators, no tabs, no network mocking, no MCP, no plugins.
+- **Cairn**: MVP. Has goto, look, focus, click, type, status, delta. No vision, no screenshots, no semantic locators, no tabs, no network mocking, no MCP, no plugins.
 - **Winner: agent-browser** — far more feature-complete. Our tool is an MVP validating the core approach.
 
 ---
 
 ## Summary
 
-| Metric | agent-browser | ai-browser-tester |
+| Metric | agent-browser | Cairn |
 |--------|--------------|-------------------|
 | Commands per task | 4 | 2 |
 | Page rep tokens (interactive-only) | ~1175 | ~3400 (full) / ~1000 (zoomed) |
@@ -106,8 +106,8 @@ After building Phase 3 (the NL `goto "<nl goal>"` intent), we re-ran the same ta
 
 | Step | Command | Output |
 |------|---------|--------|
-| 1 | `abt goto <url>` | 987 bytes — full hierarchical tree with regions + refs |
-| 2 | `abt type e11 "hello"` | 53 bytes — `✓ typed "hello" into [e11] input` |
+| 1 | `cairn goto <url>` | 987 bytes — full hierarchical tree with regions + refs |
+| 2 | `cairn type e11 "hello"` | 53 bytes — `✓ typed "hello" into [e11] input` |
 
 **Total: 2 commands, 1040 bytes.** The agent must parse the step-1 tree, identify that `[e11]` is the email textbox, then issue `type e11`.
 
@@ -115,8 +115,8 @@ After building Phase 3 (the NL `goto "<nl goal>"` intent), we re-ran the same ta
 
 | Step | Command | Output |
 |------|---------|--------|
-| 1 | `abt goto <url>` | 987 bytes — same self-describing tree |
-| 2 | `abt goto "type hello into the email field"` | 83 bytes — `✓ typed "hello" into [e11] input` + delta `(no visible changes detected)` |
+| 1 | `cairn goto <url>` | 987 bytes — same self-describing tree |
+| 2 | `cairn goto "type hello into the email field"` | 83 bytes — `✓ typed "hello" into [e11] input` + delta `(no visible changes detected)` |
 
 **Total: 2 commands, 1070 bytes.** The agent states intent in English — no need to parse the tree or find the ref. The tool grounds "email field" → `[e11]` internally via fuzzy token overlap + role-hint + typeability scoring.
 
@@ -140,7 +140,7 @@ Dogfooding on real pages revealed two important edge cases:
 
 1. **Typeability scoring (fixed):** On Wikipedia's main page, the grounder initially matched "search" to a `<span>Search</span>` label (high token overlap) instead of looking for an actual `<input>`. Fix: for type intents, strongly prefer typeable roles (textbox/searchbox/combobox/textarea/contenteditable, +0.20 bonus) and heavily penalize non-typeable matches (-0.55). Now correctly returns "not found" when no real input field exists.
 
-2. **Shadow-DOM / dialog-based search (fixed):** Wikipedia and DuckDuckGo both hide their search inputs behind links (open a dialog) or shadow DOM (closed custom elements). The structured model can't see inside these, so the NL type intent correctly returns "not found". **Fix:** the executor now runs a click-to-reveal fallback — when a type intent returns notFound, it re-grounds the target as a click intent, clicks the matching "Search" link/button to open the dialog, re-builds the model, and re-grounds the type intent. If the dialog re-renders DOM (invalidating `data-abt-ref` attributes, as Wikipedia does), a direct-locator fallback finds the first visible input and fills it. Verified end-to-end on en.wikipedia.org article pages: `goto "type artificial intelligence into the search field"` → auto-clicks Search link → opens dialog → types into the search input. ✓
+2. **Shadow-DOM / dialog-based search (fixed):** Wikipedia and DuckDuckGo both hide their search inputs behind links (open a dialog) or shadow DOM (closed custom elements). The structured model can't see inside these, so the NL type intent correctly returns "not found". **Fix:** the executor now runs a click-to-reveal fallback — when a type intent returns notFound, it re-grounds the target as a click intent, clicks the matching "Search" link/button to open the dialog, re-builds the model, and re-grounds the type intent. If the dialog re-renders DOM (invalidating `data-cairn-ref` attributes, as Wikipedia does), a direct-locator fallback finds the first visible input and fills it. Verified end-to-end on en.wikipedia.org article pages: `goto "type artificial intelligence into the search field"` → auto-clicks Search link → opens dialog → types into the search input. ✓
 
 #### Intent types verified
 
@@ -154,11 +154,11 @@ All three intent kinds work end-to-end on the test login form:
 | Navigate | `goto "go to settings"` | ✓ clicked [e5], detected URL change |
 | Not-found | `goto "click the submit button"` | ✗ not found, closest: [e15] [e16] |
 
-### Updated next steps for ai-browser-tester
+### Updated next steps for Cairn
 
 1. ~~Add screenshot support (Phase 2 vision fallback)~~ ✅ **Done** — `look --visual` captures marked screenshots with numbered boxes over interactive elements
 2. ~~Add NL `goto` intent (Phase 3)~~ ✅ **Done** — deterministic perceive→ground→act→verify in one command
-3. ~~Add an `--interactive-only` flag to `look` (match agent-browser's `-i` compactness)~~ ✅ **Done** — `abt look -i` / `abt look --interactive-only` shows a compact flat list of interactive elements grouped by region. Tested on wikipedia.org: 5525 bytes vs 13637 bytes full tree (2.5x more compact, approaching agent-browser's 4699-byte `-i`).
+3. ~~Add an `--interactive-only` flag to `look` (match agent-browser's `-i` compactness)~~ ✅ **Done** — `cairn look -i` / `cairn look --interactive-only` shows a compact flat list of interactive elements grouped by region. Tested on wikipedia.org: 5525 bytes vs 13637 bytes full tree (2.5x more compact, approaching agent-browser's 4699-byte `-i`).
 4. ~~Multi-step intent composition: "type X into the search field" → auto-click search link → re-ground in dialog~~ ✅ **Done** — click-to-reveal fallback in execute.ts. When a type intent returns notFound, re-grounds as click intent, clicks matching link/button, waits for dialog, re-grounds + types. Direct-locator fallback handles DOM re-renders. Verified on en.wikipedia.org article pages.
 5. Add semantic locators (`find role button --name "Submit"`) as a complement to refs
 6. Package as a skill (like agent-browser ships)

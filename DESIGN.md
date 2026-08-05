@@ -80,7 +80,7 @@ When the agent says `click [ref=e15]`, the tool resolves e15 → its bounding bo
 The structured model is blind to canvas/WebGL and closed shadow roots. So the tool falls back to a marked screenshot **only** when:
 - The structured model finds no interactive node where the agent expects one, or
 - The target is canvas/WebGL-rich, or
-- The agent explicitly requests a visual look (`ab look`).
+- The agent explicitly requests a visual look (`cairn look`).
 
 This keeps vision as a cheap fallback rather than the primary, expensive loop.
 
@@ -90,13 +90,13 @@ Instead of observe/act/extract primitives, the CLI exposes intents:
 
 | Command | What it does | Why |
 |---|---|---|
-| `ab focus <region\|ref>` | Zoom into a region/subtree (compact output) | Token-efficient navigation |
-| `ab click <ref>` | Deterministic click by ref | No coordinate reasoning |
-| `ab type <ref> <text>` | Fill a field | |
-| `ab goto "<nl goal>"` | Tool perceives+grounds+acts+verifies internally, returns compact result | **Collapses 4-5 steps into 1** |
-| `ab extract <schema>` | Structured data extraction | |
-| `ab look` | Marked screenshot + current region tree (the "I'm confused, show me" command) | Vision fallback |
-| `ab status` | Session state (URL, focused region, last delta) | Re-orient without a full snapshot |
+| `cairn focus <region\|ref>` | Zoom into a region/subtree (compact output) | Token-efficient navigation |
+| `cairn click <ref>` | Deterministic click by ref | No coordinate reasoning |
+| `cairn type <ref> <text>` | Fill a field | |
+| `cairn goto "<nl goal>"` | Tool perceives+grounds+acts+verifies internally, returns compact result | **Collapses 4-5 steps into 1** |
+| `cairn extract <schema>` | Structured data extraction | |
+| `cairn look` | Marked screenshot + current region tree (the "I'm confused, show me" command) | Vision fallback |
+| `cairn status` | Session state (URL, focused region, last delta) | Re-orient without a full snapshot |
 
 The `goto` command is the key step-efficiency win: the agent states intent in English, the tool runs the perceive/ground/act/verify loop internally (using deterministic logic + at most one cheap vision call), and returns `"done: clicked Sign in, now on /dashboard"` or `"ambiguous: two 'Sign in' buttons, which?"`. This is what makes it feel **easy to navigate.**
 
@@ -142,7 +142,7 @@ Like agent-browser, this ships as: a **CLI binary + a skill that injects usage i
 2. **Vision fallback.** Marked screenshot on demand; canvas/WebGL/shadow-DOM detection → vision path. ✅ done.
 3. **High-level `goto` intent.** Internal perceive→ground→act→verify loop with one cheap vision call max.
 4. **Steel Browser integration + anti-detect.** Self-hosted chrome farm (Apache-2.0, free — `steel-dev/steel-browser`), session mgmt, proxy rotation. ✅ done.
-5. **Skill packaging.** CLI + injected instructions; polish the agent-facing surface.
+5. **Skill packaging.** CLI + injected instructions; polish the agent-facing surface. ✅ done (renamed to Cairn; `skill/SKILL.md` + `skill/references/advanced-patterns.md`).
 6. **Scale path.** Browserbase for managed; optional Rust CDP-orchestrator if profiling demands.
 
 ---
