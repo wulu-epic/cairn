@@ -140,6 +140,136 @@ export class SessionManager {
     }
   }
 
+  // ─── Storage State (cookies + localStorage + sessionStorage) ────
+
+  /** Path to the storage state file for this session. */
+  get storageStateFile(): string {
+    return path.join(SESSION_DIR, `${this.sessionId}.storage.json`);
+  }
+
+  /** Check if a saved storage state exists for this session. */
+  hasStorageState(): boolean {
+    return fs.existsSync(this.storageStateFile);
+  }
+
+  /**
+   * Save the current browser storage state (cookies + localStorage) to disk.
+   * Enables persisting auth sessions across release/reconnect.
+   */
+  async saveStorageState(page: Page): Promise<{ success: boolean; message: string }> {
+    try {
+      const context = page.context();
+      const state = await context.storageState();
+
+      if (!fs.existsSync(SESSION_DIR)) {
+        fs.mkdirSync(SESSION_DIR, { recursive: true });
+      }
+      fs.writeFileSync(this.storageStateFile, JSON.stringify(state, null, 2));
+
+      const cookieCount = state.cookies.length;
+      const originCount = state.origins.length;
+      return {
+        success: true,
+        message: `saved ${cookieCount} cookie(s) + localStorage from ${originCount} origin(s)`,
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { success: false, message: `failed to save storage state: ${msg}` };
+    }
+  }
+
+  /**
+   * Restore storage state from disk (cookies + localStorage).
+   * Call after connecting to persist auth sessions across reconnects.
+   */
+  async restoreStorageState(page: Page): Promise<{ success: boolean; message: string }> {
+    if (!fs.existsSync(this.storageStateFile)) {
+      return { success: false, message: 'no saved storage state for this session' };
+    }
+
+    try {
+      const state = JSON.parse(fs.readFileSync(this.storageStateFile, 'utf8'));
+      const context = page.context();
+
+      // Restore cookies
+      if (state.cookies && state.cookies.length > 0) {
+        await context.addCookies(state.cookies);
+      }
+
+      // Restore localStorage for each origin
+      let lsCount = 0;
+      if (state.origins) {
+        for (const origin of state.origins) {
+          if (origin.localStorage && origin.localStorage.length > 0) {
+            // Navigate to the origin and set localStorage items
+            try {
+              await page.goto(origin.origin, { waitUntil: 'domcontentloaded', timeout: 10000 });
+              await page.evaluate((items: { name: string; value: string }[]) => {
+                for (const item of items) {
+                  localStorage.setItem(item.name, item.value);
+                }
+              }, origin.localStorage);
+              lsCount += origin.localStorage.length;
+            } catch {
+              // Origin may be unreachable — skip silently
+            }
+          }
+        }
+      }
+
+      const cookieCount = state.cookies?.length ?? 0;
+      return {
+        success: true,
+        message: `restored ${cookieCount} cookie(s) + ${lsCount} localStorage item(s)`,
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { success: false, message: `failed to restore storage state: ${msg}` };
+    }
+  }
+
+  /**
+   * Clear all cookies and storage state (localStorage + sessionStorage) for the
+   * current page. Also removes the saved storage state file.
+   */
+  async clearStorageState(page: Page): Promise<{ success: boolean; message: string }> {
+    try {
+      const context = page.context();
+      await context.clearCookies();
+
+      // Clear localStorage and sessionStorage on the current page
+      await page.evaluate(() => {
+        localStorage.clear();
+        sessionStorage.clear();
+      });
+
+      // Remove the saved storage state file
+      if (fs.existsSync(this.storageStateFile)) {
+        fs.unlinkSync(this.storageStateFile);
+      }
+
+      return { success: true, message: 'cleared all cookies + localStorage + sessionStorage' };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { success: false, message: `failed to clear storage state: ${msg}` };
+    }
+  }
+
+  /**
+   * Get the current cookies for display (cairn cookies list).
+   * Returns an array of { name, value, domain, path }.
+   */
+  async getCookies(page: Page): Promise<{ name: string; value: string; domain: string; path: string }[]> {
+    const context = page.context();
+    const cookies = await context.cookies();
+    return cookies.map((c) => ({
+      name: c.name,
+      value: c.value.slice(0, 50), // truncate long values for display
+      domain: c.domain,
+      path: c.path,
+    }));
+  }
+
   /** Clean up the browser connection without killing the persistent browser. */
   async disconnect(connection: BrowserConnection): Promise<void> {
     if (this.backend) {

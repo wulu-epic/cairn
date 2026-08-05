@@ -69,7 +69,7 @@ for (let i = 0; i < remainingArgs.length; i++) {
 const command = cmdArgs[0];
 const commandArgs = cmdArgs.slice(1);
 
-const COMMANDS = ['focus', 'click', 'type', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'tab', 'dialog', 'upload', 'download', 'release'] as const;
+const COMMANDS = ['focus', 'click', 'type', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'tab', 'dialog', 'upload', 'download', 'cookies', 'storage', 'release'] as const;
 type Command = (typeof COMMANDS)[number];
 
 function printHelp(): void {
@@ -100,6 +100,12 @@ Commands:
     [text]                accept with optional prompt text (default: accept)
   upload <ref> <filepath> Upload a file to an <input type="file"> by ref
   download <ref>         Click a download link by ref, save to .sessions/
+  cookies <list|clear>   Cookie management:
+                           cookies list           — show current cookies
+                           cookies clear          — clear all cookies + storage
+  storage <save|restore> Storage state persistence:
+                           storage save            — save cookies + localStorage
+                           storage restore        — restore from saved state
   release                Release the browser session (Steel: frees the browser;
                           local Chrome: clears session state)
 
@@ -152,6 +158,17 @@ async function main(): Promise<void> {
       await page.goto(savedState.currentUrl, { waitUntil: 'domcontentloaded' });
     } catch {
       // ignore navigation errors on restore
+    }
+  }
+
+  // Auto-restore storage state (cookies + localStorage) if it exists.
+  // This persists auth sessions across release/reconnect — the agent can
+  // log in once, then use `cairn storage save` + subsequent sessions
+  // automatically get the cookies restored.
+  if (session.hasStorageState() && page.url() !== 'about:blank') {
+    const restoreResult = await session.restoreStorageState(page);
+    if (restoreResult.success) {
+      process.stderr.write(`[session] ${restoreResult.message}\n`);
     }
   }
 
@@ -525,6 +542,74 @@ async function main(): Promise<void> {
       } else {
         console.error(`✗ ${result.message}`);
         process.exit(1);
+      }
+      break;
+    }
+
+    case 'cookies': {
+      const subcommand = commandArgs[0];
+      if (!subcommand || !['list', 'clear'].includes(subcommand)) {
+        console.error('Usage: cairn cookies <list|clear>');
+        console.error('  cairn cookies list  — show current cookies');
+        console.error('  cairn cookies clear — clear all cookies + storage');
+        process.exit(1);
+      }
+      switch (subcommand) {
+        case 'list': {
+          const cookies = await session.getCookies(page);
+          if (cookies.length === 0) {
+            console.log('No cookies set.');
+          } else {
+            console.log(`Cookies (${cookies.length}):`);
+            for (const c of cookies) {
+              console.log(`  ${c.name}=${c.value}  (domain: ${c.domain}, path: ${c.path})`);
+            }
+          }
+          break;
+        }
+        case 'clear': {
+          const result = await session.clearStorageState(page);
+          if (result.success) {
+            console.log(`✓ ${result.message}`);
+          } else {
+            console.error(`✗ ${result.message}`);
+            process.exit(1);
+          }
+          break;
+        }
+      }
+      break;
+    }
+
+    case 'storage': {
+      const subcommand = commandArgs[0];
+      if (!subcommand || !['save', 'restore'].includes(subcommand)) {
+        console.error('Usage: cairn storage <save|restore>');
+        console.error('  cairn storage save     — save cookies + localStorage');
+        console.error('  cairn storage restore  — restore from saved state');
+        process.exit(1);
+      }
+      switch (subcommand) {
+        case 'save': {
+          const result = await session.saveStorageState(page);
+          if (result.success) {
+            console.log(`✓ ${result.message}`);
+          } else {
+            console.error(`✗ ${result.message}`);
+            process.exit(1);
+          }
+          break;
+        }
+        case 'restore': {
+          const result = await session.restoreStorageState(page);
+          if (result.success) {
+            console.log(`✓ ${result.message}`);
+          } else {
+            console.error(`✗ ${result.message}`);
+            process.exit(1);
+          }
+          break;
+        }
       }
       break;
     }
