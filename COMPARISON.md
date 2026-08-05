@@ -140,7 +140,7 @@ Dogfooding on real pages revealed two important edge cases:
 
 1. **Typeability scoring (fixed):** On Wikipedia's main page, the grounder initially matched "search" to a `<span>Search</span>` label (high token overlap) instead of looking for an actual `<input>`. Fix: for type intents, strongly prefer typeable roles (textbox/searchbox/combobox/textarea/contenteditable, +0.20 bonus) and heavily penalize non-typeable matches (-0.55). Now correctly returns "not found" when no real input field exists.
 
-2. **Shadow-DOM / dialog-based search (known limitation):** Wikipedia and DuckDuckGo both hide their search inputs behind links (open a dialog) or shadow DOM (closed custom elements). The structured model can't see inside these, so the NL type intent correctly returns "not found" and suggests `abt look --visual`. A future enhancement could chain intents: "type X into the search field" → if not found, click the nearest "Search" link → re-ground in the dialog → type. This is the multi-step intent composition planned for a later phase.
+2. **Shadow-DOM / dialog-based search (fixed):** Wikipedia and DuckDuckGo both hide their search inputs behind links (open a dialog) or shadow DOM (closed custom elements). The structured model can't see inside these, so the NL type intent correctly returns "not found". **Fix:** the executor now runs a click-to-reveal fallback — when a type intent returns notFound, it re-grounds the target as a click intent, clicks the matching "Search" link/button to open the dialog, re-builds the model, and re-grounds the type intent. If the dialog re-renders DOM (invalidating `data-abt-ref` attributes, as Wikipedia does), a direct-locator fallback finds the first visible input and fills it. Verified end-to-end on en.wikipedia.org article pages: `goto "type artificial intelligence into the search field"` → auto-clicks Search link → opens dialog → types into the search input. ✓
 
 #### Intent types verified
 
@@ -158,8 +158,8 @@ All three intent kinds work end-to-end on the test login form:
 
 1. ~~Add screenshot support (Phase 2 vision fallback)~~ ✅ **Done** — `look --visual` captures marked screenshots with numbered boxes over interactive elements
 2. ~~Add NL `goto` intent (Phase 3)~~ ✅ **Done** — deterministic perceive→ground→act→verify in one command
-3. Add an `--interactive-only` flag to `look` (match agent-browser's `-i` compactness)
-4. Multi-step intent composition: "type X into the search field" → auto-click search link → re-ground in dialog
+3. ~~Add an `--interactive-only` flag to `look` (match agent-browser's `-i` compactness)~~ ✅ **Done** — `abt look -i` / `abt look --interactive-only` shows a compact flat list of interactive elements grouped by region. Tested on wikipedia.org: 5525 bytes vs 13637 bytes full tree (2.5x more compact, approaching agent-browser's 4699-byte `-i`).
+4. ~~Multi-step intent composition: "type X into the search field" → auto-click search link → re-ground in dialog~~ ✅ **Done** — click-to-reveal fallback in execute.ts. When a type intent returns notFound, re-grounds as click intent, clicks matching link/button, waits for dialog, re-grounds + types. Direct-locator fallback handles DOM re-renders. Verified on en.wikipedia.org article pages.
 5. Add semantic locators (`find role button --name "Submit"`) as a complement to refs
 6. Package as a skill (like agent-browser ships)
 7. Add MCP integration

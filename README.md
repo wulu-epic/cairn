@@ -2,7 +2,7 @@
 
 An agent-first browser testing tool — optimized for LLM agents, not test scripts.
 
-> **Status:** MVP (Phase 1) + Phase 2 (vision fallback). The core loop works: navigate → look → click/type by stable ref → see compact deltas. Canvas/WebGL/shadow-DOM pages auto-suggest a marked screenshot (`abt look --visual`). See [DESIGN.md](DESIGN.md) for the full design and [COMPARISON.md](COMPARISON.md) for a head-to-head vs agent-browser.
+> **Status:** Phase 1 (MVP) + Phase 2 (vision fallback) + Phase 3 (NL goto intents). The core loop works: navigate → look → click/type by stable ref → see compact deltas. Canvas/WebGL/shadow-DOM pages auto-suggest a marked screenshot (`abt look --visual`). NL intents collapse the loop: `goto "click the sign in button"` runs perceive→ground→act→verify internally. Dialog-based search auto-resolves via click-to-reveal fallback. See [DESIGN.md](DESIGN.md) for the full design and [COMPARISON.md](COMPARISON.md) for a head-to-head vs agent-browser.
 
 ## Quick start
 
@@ -23,12 +23,16 @@ npx tsx src/cli.ts click e6
 
 ```
 abt goto <url>           Navigate to a URL (shows page tree immediately)
-abt look [--visual]      Show page tree; --visual adds a marked screenshot
+abt goto "<nl goal>"     Run an NL intent: perceive → ground → act → verify
+                         e.g. goto "click the sign in button"
+                         e.g. goto "type hello into the email field"
+abt look [--visual] [-i] Show page tree; --visual adds a marked screenshot,
+                         -i shows only interactive elements (compact, ~2.5x smaller)
 abt focus <region|ref>   Zoom into a region (nav/main/sidebar/footer/modal)
 abt click <ref>          Click by stable ref (deterministic, no coordinates)
 abt type <ref> <text>    Fill a field by ref
 abt status               Show session state (URL, focused region, connection)
-abt extract <schema>     Structured extraction (Phase 3)
+abt extract <schema>     Structured extraction (planned)
 ```
 
 ## How it works
@@ -47,6 +51,8 @@ abt extract <schema>     Structured extraction (Phase 3)
 
 7. **Vision fallback** (Phase 2): The structured model is blind to canvas/WebGL/closed shadow-DOM. When the page is media-rich, `look` auto-suggests `--visual`, which captures a full-page screenshot with numbered boxes over every interactive element — labeled with the *same* refs the tree uses. The agent looks at the image to disambiguate, then still acts by ref (`abt click e15`), never by coordinate. This is what eliminates location hallucination: vision perceives, refs ground.
 
+8. **NL goto intents** (Phase 3): The `goto` command accepts either a URL or a natural-language goal. `goto "click the sign in button"` runs the full perceive→ground→act→verify loop internally (deterministic, no in-tool LLM call) — the agent states intent in English and the tool handles grounding via fuzzy token overlap + role/region/typeability scoring. When a type intent can't find the field (e.g. search hidden behind a dialog), the click-to-reveal fallback auto-clicks the matching link/button, waits for the dialog to open, and re-grounds + types — all in one command.
+
 ## Architecture
 
 ```
@@ -57,12 +63,16 @@ src/
 │   ├── page-model.ts       Spatial-semantic page model (DOM walk + interactivity + regions + media-rich detection)
 │   ├── interactivity.ts    Interactivity inference logic (injected into browser)
 │   └── delta.ts            MutationObserver + diff-by-ref delta output
-├── render/renderer.ts      Hierarchical tree renderer with region clustering + media-rich warning
+├── intent/
+│   ├── parser.ts           NL intent parser (deterministic pattern matching → Click/Type/Navigate)
+│   ├── grounding.ts        Fuzzy grounding (token overlap + role/region/typeability scoring → ref)
+│   └── execute.ts          Full perceive→ground→act→verify loop + click-to-reveal fallback
+├── render/renderer.ts      Hierarchical tree renderer with region clustering + media-rich warning + interactive-only
 ├── vision/
 │   └── screenshot.ts       Marked screenshot capture (numbered boxes over interactive els, same refs)
 └── actions/
     ├── click.ts            Ref-based click (Playwright auto-wait)
-    ├── type.ts             Ref-based fill (clear + type)
+    ├── type.ts             Ref-based fill (clear + type, child-input fallback for wrappers)
     └── focus.ts            Element focus + region focus (session state)
 ```
 
@@ -88,7 +98,7 @@ docker compose up --build -d   # Start Chrome in Docker
 
 - [x] **Phase 1 (MVP)**: Page model + ref-based actions + persistent session + delta output
 - [x] **Phase 2**: Vision fallback (marked screenshots for canvas/shadow-DOM ambiguity)
-- [ ] **Phase 3**: High-level `goto "nl goal"` (internal perceive→ground→act→verify loop)
+- [x] **Phase 3**: High-level `goto "nl goal"` (internal perceive→ground→act→verify loop) + `--interactive-only` flag + click-to-reveal multi-step intent composition
 - [ ] **Phase 4**: Steel.dev chrome farm + anti-detect + proxy rotation
 - [ ] **Phase 5**: Skill packaging (CLI + injected instructions, like agent-browser ships)
 - [ ] **Phase 6**: Scale path (Browserbase managed, optional Rust CDP orchestrator)
