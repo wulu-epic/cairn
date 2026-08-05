@@ -20,6 +20,7 @@ import { scrollByRef, scrollDirection, isScrollDirection } from './actions/scrol
 import { selectByRef } from './actions/select.js';
 import { keypress, normalizeKey } from './actions/keypress.js';
 import { dragByRef } from './actions/drag.js';
+import { listTabs, formatTabs, switchTab, closeTab, newTab } from './actions/tabs.js';
 import { waitForPageSettled, computeDelta, renderDelta } from './model/delta.js';
 import { captureMarkedScreenshot, renderLegend } from './vision/screenshot.js';
 import { executeGoto } from './intent/execute.js';
@@ -66,7 +67,7 @@ for (let i = 0; i < remainingArgs.length; i++) {
 const command = cmdArgs[0];
 const commandArgs = cmdArgs.slice(1);
 
-const COMMANDS = ['focus', 'click', 'type', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'release'] as const;
+const COMMANDS = ['focus', 'click', 'type', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'tab', 'release'] as const;
 type Command = (typeof COMMANDS)[number];
 
 function printHelp(): void {
@@ -87,7 +88,12 @@ Commands:
                           -i shows only interactive elements (compact)
   status                 Show session state (URL, region, backend, session info)
   goto <url|"nl goal">   Navigate to URL or run an NL intent
-  extract <schema>       Structured data extraction (not yet implemented)
+  extract <schema>       Structured data extraction (JSON output)
+  tab <list|switch|      Tab management:
+    close|new>             tab list              — show all open tabs
+                           tab switch <N|url>    — switch to a tab
+                           tab close [<N|url>]   — close a tab (current if none)
+                           tab new [url]         — open a new tab
   release                Release the browser session (Steel: frees the browser;
                           local Chrome: clears session state)
 
@@ -410,6 +416,61 @@ async function main(): Promise<void> {
       } else {
         console.error(`✗ ${result.message}`);
         process.exit(1);
+      }
+      break;
+    }
+
+    case 'tab': {
+      const subcommand = commandArgs[0];
+      const tabArg = commandArgs.slice(1).join(' ');
+      if (!subcommand || !['list', 'switch', 'close', 'new'].includes(subcommand)) {
+        console.error('Usage: cairn tab <list|switch|close|new>');
+        console.error('  cairn tab list              — show all open tabs');
+        console.error('  cairn tab switch <N|url>    — switch to a tab');
+        console.error('  cairn tab close [<N|url>]   — close a tab (current if none)');
+        console.error('  cairn tab new [url]         — open a new tab');
+        process.exit(1);
+      }
+      switch (subcommand) {
+        case 'list': {
+          const tabs = await listTabs(page);
+          console.log(formatTabs(tabs));
+          break;
+        }
+        case 'switch': {
+          if (!tabArg) {
+            console.error('Usage: cairn tab switch <N|url-substring>');
+            process.exit(1);
+          }
+          const result = await switchTab(page, tabArg);
+          if (result.success) {
+            console.log(`✓ ${result.message}`);
+          } else {
+            console.error(`✗ ${result.message}`);
+            process.exit(1);
+          }
+          break;
+        }
+        case 'close': {
+          const result = await closeTab(page, tabArg || undefined);
+          if (result.success) {
+            console.log(`✓ ${result.message}`);
+          } else {
+            console.error(`✗ ${result.message}`);
+            process.exit(1);
+          }
+          break;
+        }
+        case 'new': {
+          const result = await newTab(page, tabArg || undefined);
+          if (result.success) {
+            console.log(`✓ ${result.message}`);
+          } else {
+            console.error(`✗ ${result.message}`);
+            process.exit(1);
+          }
+          break;
+        }
       }
       break;
     }
