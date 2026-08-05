@@ -1,7 +1,32 @@
+# Steel Browser — self-hosted chrome farm (Apache-2.0, free)
+#
+# Steel provides session management, anti-detect (fingerprint injection),
+# and proxy rotation via its REST API (:3000) + CDP websocket proxy (:9223).
+#
+# Usage:
+#   docker compose up -d
+#   # Then: abt goto https://example.com --steel
+#
+# Ports:
+#   3000 = REST API + UI (UI at http://localhost:3000/ui)
+#   9223 = CDP websocket proxy (NEVER expose to public internet!)
+#
+# Env vars (see src/config.ts + STEEL_* env vars):
+#   DOMAIN       — public URL for the API (default: localhost:3000)
+#   CDP_DOMAIN   — public URL for CDP (default: localhost:9223)
+#   CHROME_HEADLESS — true/false (default: true)
+#   PROXY_URL    — global default proxy (per-session --proxy overrides)
+#   SKIP_FINGERPRINT_INJECTION — true to disable anti-detect
+
 services:
-  chrome:
-    build: .
+  steel:
+    image: ghcr.io/steel-dev/steel-browser:latest
     ports:
-      - "9222:9222"
+      - "3000:3000"
+      - "9223:9223"
+    environment:
+      - DOMAIN=localhost:3000
+      - CDP_DOMAIN=localhost:9223
+      - CHROME_HEADLESS=true
     shm_size: '2g'
     restart: unless-stopped

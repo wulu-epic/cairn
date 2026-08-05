@@ -7,7 +7,7 @@
  * by stable ref (never coordinates), gets compact hierarchical output, and
  * benefits from a persistent session across commands.
  *
- * Usage: abt <command> [args] [--session <id>]
+ * Usage: abt <command> [args] [--session <id>] [--steel] [--proxy <url>] ...
  */
 
 import { SessionManager } from './session/session.js';
@@ -18,6 +18,7 @@ import { typeByRef } from './actions/type.js';
 import { waitForPageSettled, computeDelta, renderDelta } from './model/delta.js';
 import { captureMarkedScreenshot, renderLegend } from './vision/screenshot.js';
 import { executeGoto } from './intent/execute.js';
+import { resolveConfig, parseFlags } from './config.js';
 
 /** Detect whether a string looks like a URL (vs an NL intent goal). */
 function isURL(s: string): boolean {
@@ -33,50 +34,70 @@ function isURL(s: string): boolean {
 
 const rawArgs = process.argv.slice(2);
 
+// Phase 4: parse global flags (--steel, --proxy, --user-agent, --headless, etc.)
+// parseFlags extracts these and returns the remaining args (command + command args)
+const { flags: cliFlags, remainingArgs } = parseFlags(rawArgs);
+
+// Parse remaining args for --session, --visual, --interactive-only
 let sessionId = 'default';
 let visualMode = false;
 let interactiveOnly = false;
 const cmdArgs: string[] = [];
-for (let i = 0; i < rawArgs.length; i++) {
-  if (rawArgs[i] === '--session' && i + 1 < rawArgs.length) {
-    sessionId = rawArgs[i + 1];
+for (let i = 0; i < remainingArgs.length; i++) {
+  if (remainingArgs[i] === '--session' && i + 1 < remainingArgs.length) {
+    sessionId = remainingArgs[i + 1];
     i++;
-  } else if (rawArgs[i] === '--visual') {
+  } else if (remainingArgs[i] === '--visual') {
     visualMode = true;
-  } else if (rawArgs[i] === '--interactive-only' || rawArgs[i] === '-i') {
+  } else if (remainingArgs[i] === '--interactive-only' || remainingArgs[i] === '-i') {
     interactiveOnly = true;
   } else {
-    cmdArgs.push(rawArgs[i]);
+    cmdArgs.push(remainingArgs[i]);
   }
 }
 
 const command = cmdArgs[0];
 const commandArgs = cmdArgs.slice(1);
 
-const COMMANDS = ['focus', 'click', 'type', 'look', 'status', 'goto', 'extract'] as const;
+const COMMANDS = ['focus', 'click', 'type', 'look', 'status', 'goto', 'extract', 'release'] as const;
 type Command = (typeof COMMANDS)[number];
 
 function printHelp(): void {
   console.log(`ai-browser-tester — agent-first browser testing tool
 
-Usage: abt <command> [args] [--session <id>]
+Usage: abt <command> [args] [options]
 
 Commands:
-  focus <region|ref>   Zoom into a region/subtree (token-efficient)
-  click <ref>          Deterministic click by stable ref
-  type <ref> <text>    Fill a field by ref
-  look [--visual] [-i]  Show page tree; --visual adds a marked screenshot,
-                        -i shows only interactive elements (compact)
-  status               Show session state (URL, focused region, last delta)
-  goto <url|"nl goal">  Navigate to URL or run an NL intent
-  extract <schema>     Structured data extraction (Phase 3)
+  focus <region|ref>     Zoom into a region/subtree (token-efficient)
+  click <ref>            Deterministic click by stable ref
+  type <ref> <text>      Fill a field by ref
+  look [--visual] [-i]   Show page tree; --visual adds a marked screenshot,
+                          -i shows only interactive elements (compact)
+  status                 Show session state (URL, region, backend, session info)
+  goto <url|"nl goal">   Navigate to URL or run an NL intent
+  extract <schema>       Structured data extraction (Phase 5)
+  release                Release the browser session (Steel: frees the browser;
+                          local Chrome: clears session state)
 
 Options:
-  --session <id>       Session ID (default: default)
-  --visual             Capture a marked screenshot (numbered boxes over
-                       interactive elements, labeled with the same refs)
-  --interactive-only, -i  Show only interactive elements (compact, ~3x smaller)
-  --help, -h           Show this help
+  --session <id>         Session ID (default: default)
+  --steel                Use self-hosted Steel Browser backend (anti-detect +
+                          proxy rotation; requires Steel container running)
+  --proxy <url>          Per-session proxy (http://user:pass@host:port or
+                          socks5://host:port) — passed to Steel session
+  --user-agent <str>     Custom User-Agent for the browser session
+  --headless             Run browser in headless mode (default)
+  --no-headless          Run browser in headed mode (visible window)
+  --visual               Capture a marked screenshot (numbered boxes over
+                          interactive elements, labeled with the same refs)
+  --interactive-only, -i Show only interactive elements (compact, ~3x smaller)
+  --help, -h             Show this help
+
+Environment variables:
+  STEEL_API_URL          Steel API base URL (e.g. http://localhost:3000)
+  STEEL_API_KEY          Steel API key (self-hosted usually has none)
+  STEEL_PROXY_URL        Default proxy URL for all Steel sessions
+  STEEL_HEADLESS         "false" to run Steel browser headed
 
 Design: act by stable ref, never by coordinate. Every output is self-describing.`);
 }
@@ -92,10 +113,10 @@ if (!COMMANDS.includes(command as Command)) {
   process.exit(1);
 }
 
-// ─── Command handlers ──────────────────────────────────────────
+// ─── Resolve config + create session ───────────────────────────
 
-const session = new SessionManager(sessionId);
-
+const config = resolveConfig(cliFlags);
+const session = new SessionManager(sessionId, config);
 async function main(): Promise<void> {
   const connection = await session.connect();
   const page = await session.getPage(connection.browser);
@@ -245,8 +266,22 @@ async function main(): Promise<void> {
     }
 
     case 'extract': {
-      console.error('[stub] extract — structured extraction is Phase 2');
+      console.error('[stub] extract — structured extraction is Phase 5');
       process.exit(1);
+    }
+
+    case 'release': {
+      // Release the browser session. For Steel, this POSTs /release to free
+      // the browser process. For local Chrome, it's a no-op (Chrome stays
+      // running as a detached process; we just clear saved state).
+      await session.release();
+      if (connection.backendType === 'steel') {
+        console.log(`✓ released Steel session${connection.steelSessionId ? ` ${connection.steelSessionId}` : ''}`);
+      } else {
+        console.log('✓ cleared session state (local Chrome stays running; use --steel for managed sessions)');
+      }
+      // Don't disconnect normally — release already handled cleanup
+      return;
     }
   }
 

@@ -1,23 +1,23 @@
 /**
- * Session Manager — keeps a Chrome browser alive across CLI invocations.
+ * Session Manager — keeps a browser alive across CLI invocations.
  *
- * Strategy: launch Chrome as a detached background process with --remote-debugging-port,
- * then connect via Playwright's connectOverCDP on each CLI call. The browser stays
- * alive between commands because it's a detached process — the CLI just disconnects
- * the WebSocket without closing Chrome.
+ * Delegates to a pluggable BrowserBackend:
+ * - LocalChromeBackend: detached headless Chrome on 127.0.0.1:9222 (MVP/dev)
+ * - SteelBackend: self-hosted Steel Browser for session mgmt + anti-detect + proxy
  *
- * Fallback: if connectOverCDP fails (e.g. Chrome didn't start), use chromium.launch()
- * (non-persistent — browser closes when the CLI exits, but session state file persists).
+ * The backend is selected at construction time from AppConfig. If Steel is
+ * requested but unreachable, we fall back to local Chrome so the CLI never
+ * hard-fails just because the Steel container is down.
  */
 
-import { chromium, type Browser, type Page } from 'playwright';
-import { spawn } from 'child_process';
+import type { Browser, Page } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as http from 'http';
+import { BrowserBackend, LocalChromeBackend, BrowserConnection } from './backend.js';
+import { SteelBackend } from './steel.js';
+import type { AppConfig } from '../config.js';
 
 const SESSION_DIR = '.sessions';
-const DEFAULT_PORT = 9222;
 
 export interface SessionState {
   sessionId: string;
@@ -25,101 +25,77 @@ export interface SessionState {
   currentUrl: string;
   focusedRegion: string | null;
   createdAt: number;
+  /** Steel session ID — reused across CLI calls to keep the same browser. */
+  steelSessionId?: string;
+  /** Which backend was used last (for status display). */
+  backendType?: 'local' | 'steel';
 }
 
-export interface BrowserConnection {
-  browser: Browser;
-  viaCDP: boolean;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/** Check if a CDP endpoint is responding on the given port (from localhost — passes Chrome 111+ source-IP check). */
-async function isCdpAvailable(port: number): Promise<boolean> {
-  return new Promise(resolve => {
-    const req = http.get(`http://127.0.0.1:${port}/json/version`, (res) => {
-      let data = '';
-      res.on('data', (chunk: Buffer) => (data += chunk.toString()));
-      res.on('end', () => resolve(data.length > 0));
-    });
-    req.on('error', () => resolve(false));
-    req.setTimeout(2000, () => {
-      req.destroy();
-      resolve(false);
-    });
-  });
-}
-
-/** Launch Chrome as a detached background process with CDP enabled on 127.0.0.1. */
-async function launchChromeDetached(port: number): Promise<void> {
-  const execPath = chromium.executablePath();
-  const userDataDir = path.resolve(SESSION_DIR, 'chrome-data');
-
-  if (!fs.existsSync(SESSION_DIR)) {
-    fs.mkdirSync(SESSION_DIR, { recursive: true });
-  }
-
-  const chromeArgs = [
-    '--headless',
-    '--no-sandbox',
-    '--disable-gpu',
-    '--disable-dev-shm-usage',
-    `--remote-debugging-port=${port}`,
-    '--remote-debugging-address=127.0.0.1',
-    '--remote-allow-origins=*',
-    `--user-data-dir=${userDataDir}`,
-    'about:blank',
-  ];
-
-  const child = spawn(execPath, chromeArgs, {
-    detached: true,
-    stdio: 'ignore',
-  });
-  child.unref();
-
-  // Wait for CDP endpoint to be ready
-  for (let i = 0; i < 30; i++) {
-    await sleep(500);
-    if (await isCdpAvailable(port)) return;
-  }
-  throw new Error(`Chrome failed to start on port ${port} within 15 seconds`);
-}
+export { BrowserConnection };
 
 export class SessionManager {
   private sessionId: string;
   private stateFile: string;
-  private port: number;
+  private config: AppConfig;
+  private backend: BrowserBackend | null = null;
 
-  constructor(sessionId: string = 'default', port: number = DEFAULT_PORT) {
+  constructor(sessionId: string = 'default', config: AppConfig) {
     this.sessionId = sessionId;
-    this.port = port;
+    this.config = config;
     this.stateFile = path.join(SESSION_DIR, `${sessionId}.json`);
   }
 
-  /** Ensure Chrome is running and return a connected Browser. */
+  /** Select and instantiate the appropriate backend. */
+  private createBackend(): BrowserBackend {
+    if (this.config.useSteel) {
+      const steel = new SteelBackend(this.config);
+      // Restore saved Steel session ID so we reuse the same browser
+      const saved = this.loadState();
+      if (saved?.steelSessionId) {
+        steel.setSessionId(saved.steelSessionId);
+      }
+      return steel;
+    }
+    return new LocalChromeBackend();
+  }
+
+  /** Ensure a browser is running and return a connected Browser. */
   async connect(): Promise<BrowserConnection> {
-    if (!(await isCdpAvailable(this.port))) {
-      process.stderr.write(`[session] starting Chrome on port ${this.port}...\n`);
-      await launchChromeDetached(this.port);
+    this.backend = this.createBackend();
+
+    // If Steel is requested, try it — but fall back to local Chrome on failure
+    // so the CLI stays usable even if the Steel container is down.
+    if (this.config.useSteel) {
+      try {
+        const conn = await this.backend.connect();
+        this.saveState({ steelSessionId: conn.steelSessionId, backendType: 'steel' });
+        return conn;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        process.stderr.write(`[session] Steel backend failed: ${msg}\n`);
+        process.stderr.write('[session] falling back to local Chrome\n');
+        this.backend = new LocalChromeBackend();
+      }
     }
 
-    try {
-      const browser = await chromium.connectOverCDP(`http://127.0.0.1:${this.port}`);
-      return { browser, viaCDP: true };
-    } catch {
-      process.stderr.write('[session] connectOverCDP failed, falling back to chromium.launch()\n');
-      const browser = await chromium.launch({ headless: true });
-      return { browser, viaCDP: false };
-    }
+    const conn = await this.backend.connect();
+    this.saveState({ backendType: conn.backendType });
+    return conn;
   }
 
   /** Get the current page (or create one). */
   async getPage(browser: Browser): Promise<Page> {
-    const context = browser.contexts()[0] || (await browser.newContext());
-    const pages = context.pages();
-    return pages[0] || (await context.newPage());
+    if (!this.backend) throw new Error('Not connected — call connect() first');
+    return this.backend.getPage(browser);
+  }
+
+  /** Release the backend session entirely (Steel: POST /release; local: no-op). */
+  async release(): Promise<void> {
+    if (this.backend?.release) {
+      await this.backend.release();
+    }
+    // Clear saved Steel session ID so next connect creates a fresh session
+    this.saveState({ steelSessionId: undefined });
   }
 
   /** Save session state to disk. */
@@ -129,12 +105,14 @@ export class SessionManager {
     }
     const existing = this.loadState() || {
       sessionId: this.sessionId,
-      cdpPort: this.port,
+      cdpPort: 9222,
       currentUrl: '',
       focusedRegion: null,
       createdAt: Date.now(),
     };
     const merged: SessionState = { ...existing, ...state, sessionId: this.sessionId };
+    // Don't persist undefined values
+    if (merged.steelSessionId === undefined) delete merged.steelSessionId;
     fs.writeFileSync(this.stateFile, JSON.stringify(merged, null, 2));
   }
 
@@ -148,18 +126,15 @@ export class SessionManager {
     }
   }
 
-  /** Clean up the browser connection without killing the persistent Chrome process. */
+  /** Clean up the browser connection without killing the persistent browser. */
   async disconnect(connection: BrowserConnection): Promise<void> {
-    if (connection.viaCDP) {
-      // For connectOverCDP: do NOT call browser.close() — that would kill Chrome.
-      // The WebSocket disconnects naturally when the process exits.
-    } else {
-      // For chromium.launch(): close the ephemeral browser.
-      try {
-        await connection.browser.close();
-      } catch {
-        // ignore
-      }
+    if (this.backend) {
+      await this.backend.disconnect(connection);
     }
+  }
+
+  /** Get the backend name for status display. */
+  get backendName(): string {
+    return this.backend?.name ?? 'none';
   }
 }
