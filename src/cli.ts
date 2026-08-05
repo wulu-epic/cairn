@@ -11,6 +11,8 @@
  */
 
 import { SessionManager } from './session/session.js';
+import { buildPageModel } from './model/page-model.js';
+import { renderPage } from './render/renderer.js';
 
 // ─── Arg parsing ───────────────────────────────────────────────
 
@@ -85,15 +87,10 @@ async function main(): Promise<void> {
 
   switch (command as Command) {
     case 'look': {
-      // Show the current page as a compact role-based tree with refs.
-      // (p5 will replace this with the custom hierarchical renderer + region clustering)
-      const snapshot = await page.ariaSnapshot({ mode: 'ai' });
-      console.log(`page: ${page.url()}`);
-      if (savedState?.focusedRegion) {
-        console.log(`(region: ${savedState.focusedRegion})`);
-      }
-      console.log('---');
-      console.log(snapshot);
+      // Build the spatial-semantic page model and render it hierarchically.
+      const model = await buildPageModel(page);
+      const output = renderPage(model, { focusedRegion: savedState?.focusedRegion });
+      console.log(output);
       break;
     }
 
@@ -115,23 +112,27 @@ async function main(): Promise<void> {
       }
       await page.goto(url, { waitUntil: 'domcontentloaded' });
       const title = await page.title().catch(() => 'N/A');
+      session.saveState({ currentUrl: page.url(), focusedRegion: null });
+      // Show the page immediately after navigation (self-describing)
+      const model = await buildPageModel(page);
+      const output = renderPage(model, {});
       console.log(`navigated: ${page.url()}`);
       console.log(`title:     ${title}`);
-      session.saveState({ currentUrl: page.url(), focusedRegion: null });
+      console.log(output);
       break;
     }
 
     case 'focus': {
       const target = commandArgs[0];
       if (!target) {
-        console.error('Usage: abt focus <region|ref>');
+        console.error('Usage: abt focus <region>');
         process.exit(1);
       }
-      // p5 will implement region clustering + subtree zoom.
-      // For now, record the focused region in session state.
       session.saveState({ focusedRegion: target });
-      console.log(`focused: ${target}`);
-      console.log('(use "abt look" to see the focused subtree — full renderer in p5)');
+      // Re-render with the focused region
+      const model = await buildPageModel(page);
+      const output = renderPage(model, { focusedRegion: target });
+      console.log(output);
       break;
     }
 

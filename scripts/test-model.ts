@@ -8,6 +8,7 @@
  */
 import { chromium } from 'playwright';
 import { buildPageModel, getInteractiveNodes } from '../src/model/page-model.js';
+import { renderPage } from '../src/render/renderer.js';
 
 async function test() {
   const browser = await chromium.launch({ headless: true });
@@ -70,6 +71,12 @@ async function test() {
   }
 
   console.log(`\nTotal nodes: ${model.refIndex.size}, Interactive: ${interactive.length}`);
+
+  console.log('\n=== Rendered Output (full page) ===\n');
+  console.log(renderPage(model, {}));
+
+  console.log('\n=== Rendered Output (focused: main) ===\n');
+  console.log(renderPage(model, { focusedRegion: 'main' }));
 
   await browser.close();
 }
