@@ -21,6 +21,8 @@ import { selectByRef } from './actions/select.js';
 import { keypress, normalizeKey } from './actions/keypress.js';
 import { dragByRef } from './actions/drag.js';
 import { listTabs, formatTabs, switchTab, closeTab, newTab } from './actions/tabs.js';
+import { setDialogHandler, parseDialogConfig, getDialogConfig } from './actions/dialog.js';
+import { uploadFile, downloadFile, resolvePath, getDownloadDir } from './actions/files.js';
 import { waitForPageSettled, computeDelta, renderDelta } from './model/delta.js';
 import { captureMarkedScreenshot, renderLegend } from './vision/screenshot.js';
 import { executeGoto } from './intent/execute.js';
@@ -67,7 +69,7 @@ for (let i = 0; i < remainingArgs.length; i++) {
 const command = cmdArgs[0];
 const commandArgs = cmdArgs.slice(1);
 
-const COMMANDS = ['focus', 'click', 'type', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'tab', 'release'] as const;
+const COMMANDS = ['focus', 'click', 'type', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'tab', 'dialog', 'upload', 'download', 'release'] as const;
 type Command = (typeof COMMANDS)[number];
 
 function printHelp(): void {
@@ -94,6 +96,10 @@ Commands:
                            tab switch <N|url>    — switch to a tab
                            tab close [<N|url>]   — close a tab (current if none)
                            tab new [url]         — open a new tab
+  dialog <accept|dismiss> Auto-handle JS dialogs (alert/confirm/prompt)
+    [text]                accept with optional prompt text (default: accept)
+  upload <ref> <filepath> Upload a file to an <input type="file"> by ref
+  download <ref>         Click a download link by ref, save to .sessions/
   release                Release the browser session (Steel: frees the browser;
                           local Chrome: clears session state)
 
@@ -471,6 +477,54 @@ async function main(): Promise<void> {
           }
           break;
         }
+      }
+      break;
+    }
+
+    case 'dialog': {
+      const input = commandArgs.join(' ') || 'accept';
+      const config = parseDialogConfig(input);
+      const result = setDialogHandler(page, config);
+      if (result.success) {
+        console.log(`✓ ${result.message}`);
+      } else {
+        console.error(`✗ ${result.message}`);
+        process.exit(1);
+      }
+      break;
+    }
+
+    case 'upload': {
+      const ref = commandArgs[0];
+      const filepath = commandArgs.slice(1).join(' ');
+      if (!ref || !filepath) {
+        console.error('Usage: cairn upload <ref> <filepath>');
+        process.exit(1);
+      }
+      await buildPageModel(page);
+      const result = await uploadFile(page, ref, filepath);
+      if (result.success) {
+        console.log(`✓ ${result.message}`);
+      } else {
+        console.error(renderError(new CairnError('E_REF_STALE', result.message, 'Run "cairn look" for fresh refs, then retry.')));
+        process.exit(1);
+      }
+      break;
+    }
+
+    case 'download': {
+      const ref = commandArgs[0];
+      if (!ref) {
+        console.error('Usage: cairn download <ref>');
+        process.exit(1);
+      }
+      await buildPageModel(page);
+      const result = await downloadFile(page, ref, sessionId);
+      if (result.success) {
+        console.log(`✓ ${result.message}`);
+      } else {
+        console.error(`✗ ${result.message}`);
+        process.exit(1);
       }
       break;
     }
