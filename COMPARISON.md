@@ -163,4 +163,4 @@ All three intent kinds work end-to-end on the test login form:
 5. Add semantic locators (`find role button --name "Submit"`) as a complement to refs
 6. Package as a skill (like agent-browser ships)
 7. Add MCP integration
-8. Optional: local embedding model (all-MiniLM-L6-v2 via @xenova/transformers) as a lazy fallback for synonym matching when deterministic grounding returns not-found/ambiguous
+8. Optional: local embedding model (Xenova/all-MiniLM-L6-v2 via @huggingface/transformers) as a lazy fallback for synonym matching when deterministic grounding returns not-found/ambiguous
