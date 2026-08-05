@@ -17,6 +17,17 @@ import { clickByRef } from './actions/click.js';
 import { typeByRef } from './actions/type.js';
 import { waitForPageSettled, computeDelta, renderDelta } from './model/delta.js';
 import { captureMarkedScreenshot, renderLegend } from './vision/screenshot.js';
+import { executeGoto } from './intent/execute.js';
+
+/** Detect whether a string looks like a URL (vs an NL intent goal). */
+function isURL(s: string): boolean {
+  // Any protocol:// URL (http, https, file, ftp, etc.)
+  if (/^\w+:\/\//i.test(s)) return true;
+  // Bare domain: example.com, sub.example.com:8080/path, localhost:3000
+  if (/^localhost(:\d+)?(\/.*)?$/i.test(s)) return true;
+  if (/^[\w-]+(\.[\w-]+)+(:\d+)?(\/.*)?$/.test(s)) return true;
+  return false;
+}
 
 // ─── Arg parsing ───────────────────────────────────────────────
 
@@ -53,7 +64,7 @@ Commands:
   type <ref> <text>    Fill a field by ref
   look [--visual]       Show page tree; --visual adds a marked screenshot
   status               Show session state (URL, focused region, last delta)
-  goto <url>           Navigate to a URL
+  goto <url|"nl goal">  Navigate to URL or run an NL intent
   extract <schema>     Structured data extraction (Phase 3)
 
 Options:
@@ -130,20 +141,43 @@ async function main(): Promise<void> {
     }
 
     case 'goto': {
-      const url = commandArgs[0];
-      if (!url) {
-        console.error('Usage: abt goto <url>');
+      // The arg may be a URL ("goto example.com") or an NL intent
+      // ("goto click the sign in button"). Join all args into one string.
+      const goal = commandArgs.join(' ');
+      if (!goal) {
+        console.error('Usage: abt goto <url|"nl goal">');
+        console.error('  URL:   abt goto https://example.com');
+        console.error('  Intent: abt goto "click the sign in button"');
+        console.error('          abt goto "type hello into the email field"');
+        console.error('          abt goto "go to settings"');
         process.exit(1);
       }
-      await page.goto(url, { waitUntil: 'domcontentloaded' });
-      const title = await page.title().catch(() => 'N/A');
-      session.saveState({ currentUrl: page.url(), focusedRegion: null });
-      // Show the page immediately after navigation (self-describing)
-      const model = await buildPageModel(page);
-      const output = renderPage(model, {});
-      console.log(`navigated: ${page.url()}`);
-      console.log(`title:     ${title}`);
-      console.log(output);
+
+      if (isURL(goal)) {
+        // ── URL navigation (existing behavior) ──
+        await page.goto(goal, { waitUntil: 'domcontentloaded' });
+        const title = await page.title().catch(() => 'N/A');
+        session.saveState({ currentUrl: page.url(), focusedRegion: null });
+        // Show the page immediately after navigation (self-describing)
+        const model = await buildPageModel(page);
+        const output = renderPage(model, {});
+        console.log(`navigated: ${page.url()}`);
+        console.log(`title:     ${title}`);
+        console.log(output);
+      } else {
+        // ── NL intent: perceive → ground → act → verify (Phase 3) ──
+        // The tool runs the full loop internally using deterministic logic,
+        // collapsing 4-5 agent round-trips into one command.
+        const result = await executeGoto(page, goal);
+        if (result.success) {
+          console.log(`✓ ${result.message}`);
+        } else {
+          console.error(`✗ ${result.message}`);
+          process.exit(1);
+        }
+        // Persist session state (URL may have changed via a navigated click)
+        session.saveState({ currentUrl: page.url(), focusedRegion: null });
+      }
       break;
     }
 

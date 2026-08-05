@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Test Login Page</title>
+  <style>
+    body { font-family: sans-serif; max-width: 400px; margin: 40px auto; padding: 20px; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; margin-bottom: 4px; font-weight: bold; }
+    input { width: 100%; padding: 8px; box-sizing: border-box; }
+    button { padding: 10px 20px; cursor: pointer; }
+    .btn-primary { background: #2563eb; color: white; border: none; }
+    .btn-link { background: none; border: none; color: #2563eb; cursor: pointer; }
+    nav { margin-bottom: 20px; }
+    nav a { margin-right: 15px; }
+    #result { margin-top: 20px; color: green; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="#" id="home-link">Home</a>
+    <a href="#" id="about-link">About</a>
+    <a href="#" id="settings-link">Settings</a>
+  </nav>
+
+  <main>
+    <h1>Sign In</h1>
+    <form id="login-form">
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" placeholder="you@example.com">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" placeholder="Enter password">
+      </div>
+      <button type="submit" class="btn-primary" id="signin-btn">Sign in</button>
+      <button type="button" class="btn-link" id="forgot-btn">Forgot password?</button>
+    </form>
+    <p id="result"></p>
+  </main>
+
+  <footer>
+    <a href="#" id="help-link">Help</a>
+    <a href="#" id="privacy-link">Privacy</a>
+  </footer>
+
+  <script>
+    document.getElementById('login-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var email = document.getElementById('email').value;
+      var pass = document.getElementById('password').value;
+      document.getElementById('result').textContent =
+        'Submitted: email=' + email + ', password=' + '*'.repeat(pass.length);
+    });
+  </script>
+</body>
+</html>
