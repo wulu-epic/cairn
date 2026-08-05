@@ -13,6 +13,8 @@
 import { SessionManager } from './session/session.js';
 import { buildPageModel } from './model/page-model.js';
 import { renderPage } from './render/renderer.js';
+import { clickByRef } from './actions/click.js';
+import { typeByRef } from './actions/type.js';
 
 // ─── Arg parsing ───────────────────────────────────────────────
 
@@ -142,9 +144,19 @@ async function main(): Promise<void> {
         console.error('Usage: abt click <ref>');
         process.exit(1);
       }
-      console.error('[stub] click — ref-based actions implemented in p6');
-      console.error(`  would click: ${ref}`);
-      process.exit(1);
+      // Stamp fresh data-abt-ref attributes before resolving
+      await buildPageModel(page);
+      const result = await clickByRef(page, ref);
+      if (result.success) {
+        console.log(`✓ ${result.message}`);
+        // Show what's now on the page (self-describing)
+        const model = await buildPageModel(page);
+        console.log(renderPage(model, { focusedRegion: session.loadState()?.focusedRegion }));
+      } else {
+        console.error(`✗ ${result.message}`);
+        process.exit(1);
+      }
+      break;
     }
 
     case 'type': {
@@ -154,9 +166,16 @@ async function main(): Promise<void> {
         console.error('Usage: abt type <ref> <text>');
         process.exit(1);
       }
-      console.error('[stub] type — ref-based actions implemented in p6');
-      console.error(`  would type "${text}" into: ${ref}`);
-      process.exit(1);
+      // Stamp fresh data-abt-ref attributes before resolving
+      await buildPageModel(page);
+      const result = await typeByRef(page, ref, text);
+      if (result.success) {
+        console.log(`✓ ${result.message}`);
+      } else {
+        console.error(`✗ ${result.message}`);
+        process.exit(1);
+      }
+      break;
     }
 
     case 'extract': {

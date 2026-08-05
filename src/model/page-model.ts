@@ -209,6 +209,7 @@ const buildModelScript = `
     if (cs.display === 'none' || cs.visibility === 'hidden') return null;
 
     var ref = nextRef();
+    el.setAttribute('data-abt-ref', ref);
     var role = getImplicitRole(el);
     var name = getAccessibleName(el);
     var rect = el.getBoundingClientRect();
