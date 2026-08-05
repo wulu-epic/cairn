@@ -29,6 +29,17 @@ import { selectByRef } from '../actions/select.js';
 import { waitForPageSettled, computeDelta, renderDelta, type DeltaResult } from '../model/delta.js';
 import { parseIntent, type Intent, type ClickIntent, type TypeIntent, type SelectIntent } from './parser.js';
 import { groundIntent, groundIntentWithFallback, renderGroundResult, TYPEABLE_ROLES, type GroundResult } from './grounding.js';
+import { selfHealIntent, type ActionKind } from './self-heal.js';
+import type { TaskRecorder } from './recorder.js';
+
+export interface ExecuteOptions {
+  /** Enable transparent self-heal on action failure. Default true. */
+  useSelfHeal?: boolean;
+  /** If provided, record each successful step to this recorder. */
+  recorder?: TaskRecorder;
+  /** Session ID (for self-heal screenshot file naming). */
+  sessionId?: string;
+}
 
 export interface ExecuteResult {
   success: boolean;
@@ -37,6 +48,12 @@ export interface ExecuteResult {
   ground?: GroundResult;
   delta?: DeltaResult;
   newModel?: PageModel;
+  /** True if self-heal recovered a failed action. */
+  healed?: boolean;
+  /** Transparency log from self-heal (each step taken). */
+  healLog?: string[];
+  /** The new ref after self-heal (differs from the original if healed). */
+  newRef?: string;
 }
 
 // ─── Click-to-reveal fallback (multi-step intent composition) ──────────
@@ -108,7 +125,10 @@ export async function executeGoto(
   page: Page,
   goal: string,
   model?: PageModel,
+  options: ExecuteOptions = {},
 ): Promise<ExecuteResult> {
+  const useSelfHeal = options.useSelfHeal ?? true;
+
   // 1. Parse the NL goal into a structured Intent
   const { intent } = parseIntent(goal);
   if (!intent) {
@@ -292,6 +312,62 @@ export async function executeGoto(
   }
 
   if (!actionResult.success) {
+    // ── Transparent self-heal (Leap 3) ──
+    // The action failed — the ref may be stale (page changed since grounding).
+    // Re-ground the intent against a fresh model and retry transparently.
+    if (useSelfHeal) {
+      const healText = actionKind === 'type'
+        ? (intent as Extract<Intent, { kind: 'type' }>).text
+        : actionKind === 'select'
+          ? (intent as Extract<Intent, { kind: 'select' }>).value
+          : undefined;
+
+      const heal = await selfHealIntent(page, intent, ref, actionKind as ActionKind, healText, {
+        sessionId: options.sessionId,
+      });
+
+      if (heal.healed && heal.actionSuccess) {
+        // Self-heal recovered — record + return the healed result
+        if (options.recorder) {
+          options.recorder.recordStep({
+            goal,
+            intent,
+            groundedRef: heal.newRef,
+            groundScore: heal.ground?.status === 'match' ? heal.ground.score : undefined,
+            fallbacksUsed: ['selfHeal'],
+            actionKind: actionKind as ActionKind,
+            text: healText,
+            success: true,
+            message: heal.actionMessage,
+            url: heal.newModel.url,
+            timestamp: Date.now(),
+          });
+        }
+        return {
+          success: true,
+          message: `[self-healed] ${heal.actionMessage}\n  (re-grounded [${ref}] → [${heal.newRef}])`,
+          intent,
+          ground: heal.ground,
+          delta: heal.delta,
+          newModel: heal.newModel,
+          healed: true,
+          healLog: heal.healLog,
+          newRef: heal.newRef,
+        };
+      }
+
+      // Self-heal failed — return the failure with the heal log for transparency
+      return {
+        success: false,
+        message: `${actionResult.message}\n[self-heal attempted but failed: ${heal.actionMessage}]`,
+        intent,
+        ground,
+        newModel: heal.newModel,
+        healed: false,
+        healLog: heal.healLog,
+      };
+    }
+
     return {
       success: false,
       message: actionResult.message,
@@ -320,6 +396,28 @@ export async function executeGoto(
     parts.push(deltaLines.join('\n'));
   } else {
     parts.push('(no visible changes detected)');
+  }
+
+  // Record the successful step (if recording is enabled — Leap 2)
+  if (options.recorder) {
+    const recordText = actionKind === 'type'
+      ? (intent as Extract<Intent, { kind: 'type' }>).text
+      : actionKind === 'select'
+        ? (intent as Extract<Intent, { kind: 'select' }>).value
+        : undefined;
+    options.recorder.recordStep({
+      goal,
+      intent,
+      groundedRef: ref,
+      groundScore: ground.status === 'match' ? ground.score : undefined,
+      fallbacksUsed: [],
+      actionKind: actionKind as ActionKind,
+      text: recordText,
+      success: true,
+      message: parts.join('\n'),
+      url: newModel.url,
+      timestamp: Date.now(),
+    });
   }
 
   return {

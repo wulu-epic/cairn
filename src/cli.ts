@@ -29,6 +29,8 @@ import { executeGoto } from './intent/execute.js';
 import { extractData } from './intent/extract.js';
 import { resolveConfig, parseFlags } from './config.js';
 import { categorizeError, renderError, CairnError } from './errors.js';
+import { TaskRecorder, replayTask, listTasks, loadTask, deleteTask, renderTaskList, renderTaskDetails, getDataDir, getTasksDir } from './intent/recorder.js';
+import { selfHealByRef } from './intent/self-heal.js';
 
 /** Detect whether a string looks like a URL (vs an NL intent goal). */
 function isURL(s: string): boolean {
@@ -53,6 +55,7 @@ let sessionId = 'default';
 let visualMode = false;
 let interactiveOnly = false;
 let includeHidden = false;
+let recordName: string | null = null;  // --record <name>: enable task recording
 const cmdArgs: string[] = [];
 for (let i = 0; i < remainingArgs.length; i++) {
   if (remainingArgs[i] === '--session' && i + 1 < remainingArgs.length) {
@@ -64,6 +67,9 @@ for (let i = 0; i < remainingArgs.length; i++) {
     interactiveOnly = true;
   } else if (remainingArgs[i] === '--include-hidden') {
     includeHidden = true;
+  } else if (remainingArgs[i] === '--record' && i + 1 < remainingArgs.length) {
+    recordName = remainingArgs[i + 1];
+    i++;
   } else {
     cmdArgs.push(remainingArgs[i]);
   }
@@ -72,7 +78,7 @@ for (let i = 0; i < remainingArgs.length; i++) {
 const command = cmdArgs[0];
 const commandArgs = cmdArgs.slice(1);
 
-const COMMANDS = ['focus', 'click', 'type', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'tab', 'dialog', 'upload', 'download', 'cookies', 'storage', 'release'] as const;
+const COMMANDS = ['focus', 'click', 'type', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'tab', 'dialog', 'upload', 'download', 'cookies', 'storage', 'release', 'replay', 'tasks', 'task'] as const;
 type Command = (typeof COMMANDS)[number];
 
 function printHelp(): void {
@@ -110,23 +116,32 @@ Commands:
   storage <save|restore> Storage state persistence:
                            storage save            — save cookies + localStorage
                            storage restore        — restore from saved state
-  release                Release the browser session (Steel: frees the browser;
-                          local Chrome: clears session state)
+   release                Release the browser session (Steel: frees the browser;
+                           local Chrome: clears session state)
+  goto <url|"goal"> --record <name>
+                          Record a task: run an NL intent and save the trace
+                           for zero-LLM replay (Leap 2)
+  replay <task-id>        Deterministic replay of a recorded task (zero LLM).
+                           Self-heals stale refs automatically (Leap 3)
+  tasks                   List all recorded tasks (stored in OS data dir)
+  task <id>               Show recorded task details (steps, refs, fallbacks)
+  task delete <id>        Delete a recorded task
 
 Options:
   --session <id>         Session ID (default: default)
   --steel                Use self-hosted Steel Browser backend (anti-detect +
-                          proxy rotation; requires Steel container running)
+                           proxy rotation; requires Steel container running)
   --proxy <url>          Per-session proxy (http://user:pass@host:port or
-                          socks5://host:port) — passed to Steel session
+                           socks5://host:port) — passed to Steel session
   --user-agent <str>     Custom User-Agent for the browser session
   --headless             Run browser in headless mode (default)
   --no-headless          Run browser in headed mode (visible window)
   --visual               Capture a marked screenshot (numbered boxes over
-                          interactive elements, labeled with the same refs)
+                           interactive elements, labeled with the same refs)
   --interactive-only, -i Show only interactive elements (compact, ~3x smaller)
   --include-hidden       Surface CSS-hidden / aria-hidden content (disclaimers,
-                          deceptive patterns the a11y tree normally excludes)
+                           deceptive patterns the a11y tree normally excludes)
+  --record <name>        Record an NL goto intent as a replayable task (Leap 2)
   --help, -h             Show this help
 
 Environment variables:
@@ -254,12 +269,46 @@ async function main(): Promise<void> {
         // ── NL intent: perceive → ground → act → verify (Phase 3) ──
         // The tool runs the full loop internally using deterministic logic,
         // collapsing 4-5 agent round-trips into one command.
-        const result = await executeGoto(page, goal);
+        // Self-heal (Leap 3) is on by default — stale refs are re-grounded
+        // transparently. Recording (Leap 2) is enabled with --record <name>.
+        let recorder: TaskRecorder | undefined;
+        if (recordName) {
+          recorder = new TaskRecorder(recordName, page.url());
+        }
+        const result = await executeGoto(page, goal, undefined, {
+          useSelfHeal: true,
+          recorder,
+          sessionId,
+        });
         if (result.success) {
-          console.log(`✓ ${result.message}`);
+          // If self-heal triggered, surface it transparently
+          if (result.healed) {
+            console.log(`✓ [self-healed] ${result.message}`);
+            if (result.healLog && result.healLog.length > 0) {
+              console.error(`  heal log:`);
+              for (const line of result.healLog) {
+                console.error(`    ${line}`);
+              }
+            }
+          } else {
+            console.log(`✓ ${result.message}`);
+          }
+          // Save the recorded task (if recording was enabled)
+          if (recorder && recorder.stepCount > 0) {
+            const saved = recorder.save();
+            console.log(`  recorded task: ${saved.id} (${recorder.stepCount} step${recorder.stepCount === 1 ? '' : 's'})`);
+            console.log(`  replay with: cairn replay ${saved.id}`);
+          }
         } else {
           // Categorize the failure into an agent-actionable error code.
           // The agent reads E_NOT_FOUND / E_AMBIGUOUS to decide the next step.
+          // If self-heal was attempted but failed, show the heal log.
+          if (result.healLog && result.healLog.length > 0) {
+            console.error(`  self-heal log:`);
+            for (const line of result.healLog) {
+              console.error(`    ${line}`);
+            }
+          }
           const code = result.ground?.status === 'notFound' ? 'E_NOT_FOUND'
             : result.ground?.status === 'ambiguous' ? 'E_AMBIGUOUS'
             : 'E_UNKNOWN';
@@ -305,6 +354,22 @@ async function main(): Promise<void> {
           console.log(renderDelta(delta));
         }
       } else {
+        // ── Self-heal (Leap 3): try to find a matching element by role+name ──
+        const heal = await selfHealByRef(page, ref, prevModel);
+        if (heal.healed && heal.newRef) {
+          console.error(`  [self-heal] ref ${ref} → ${heal.newRef} (role+name match)`);
+          const retryResult = await clickByRef(page, heal.newRef);
+          if (retryResult.success) {
+            console.log(`✓ [self-healed] ${retryResult.message}`);
+            await waitForPageSettled(page);
+            const newModel = await buildPageModel(page);
+            const delta = computeDelta(heal.newModel, newModel);
+            if (delta.nodes.length > 0 || delta.urlChanged) {
+              console.log(renderDelta(delta));
+            }
+            break;
+          }
+        }
         console.error(renderError(new CairnError('E_CLICK_FAILED', result.message, 'The ref may be stale — run "cairn look" for fresh refs, then retry. Or use "cairn look --visual".')));
         process.exit(1);
       }
@@ -619,6 +684,86 @@ async function main(): Promise<void> {
           break;
         }
       }
+      break;
+    }
+    case 'replay': {
+      // ── Task Replay (Leap 2) — deterministic zero-LLM replay ──
+      // Replays a recorded task by ID. Each recorded step's ref is tried
+      // first (fast path); if stale, self-heal re-grounds by intent.
+      const taskId = commandArgs[0];
+      if (!taskId) {
+        console.error('Usage: cairn replay <task-id>');
+        console.error('  List recorded tasks: cairn tasks');
+        process.exit(1);
+      }
+      process.stderr.write(`replaying task: ${taskId}...\n`);
+      const result = await replayTask(page, taskId, {
+        useSelfHeal: true,
+        onStep: (step, stepResult) => {
+          const status = stepResult.success ? '✓' : '✗';
+          const healed = stepResult.healed ? ' [self-healed]' : '';
+          const newRef = stepResult.newRef ? ` → [${stepResult.newRef}]` : '';
+          process.stderr.write(`  ${status} step ${step.stepIndex + 1}: ${stepResult.message.slice(0, 80)}${healed}${newRef}\n`);
+        },
+      });
+      if (result.success) {
+        console.log(`✓ ${result.message}`);
+        if (result.healsTriggered > 0) {
+          console.log(`  (${result.healsTriggered} self-heal${result.healsTriggered === 1 ? '' : 's'} triggered)`);
+        }
+      } else {
+        console.error(`✗ ${result.message}`);
+        process.exit(1);
+      }
+      break;
+    }
+
+    case 'tasks': {
+      // ── List recorded tasks (Leap 2) ──
+      const tasks = listTasks();
+      console.log(renderTaskList(tasks));
+      if (tasks.length > 0) {
+        console.log(`\nData dir: ${getTasksDir()}`);
+      }
+      break;
+    }
+
+    case 'task': {
+      // ── Task management: show details or delete ──
+      //   cairn task <id>          — show task details
+      //   cairn task delete <id>   — delete a task
+      const subcommand = commandArgs[0];
+      if (!subcommand) {
+        console.error('Usage: cairn task <id> | cairn task delete <id>');
+        console.error('  cairn task <id>        — show task details (steps, refs, fallbacks)');
+        console.error('  cairn task delete <id> — delete a recorded task');
+        process.exit(1);
+      }
+
+      if (subcommand === 'delete') {
+        const taskId = commandArgs[1];
+        if (!taskId) {
+          console.error('Usage: cairn task delete <id>');
+          process.exit(1);
+        }
+        const deleted = deleteTask(taskId);
+        if (deleted) {
+          console.log(`✓ deleted task: ${taskId}`);
+        } else {
+          console.error(`✗ task not found: ${taskId}`);
+          process.exit(1);
+        }
+        break;
+      }
+
+      // Show task details
+      const task = loadTask(subcommand);
+      if (!task) {
+        console.error(`✗ task not found: ${subcommand}`);
+        console.error('  List tasks: cairn tasks');
+        process.exit(1);
+      }
+      console.log(renderTaskDetails(task));
       break;
     }
 
