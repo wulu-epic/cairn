@@ -19,6 +19,7 @@ import { waitForPageSettled, computeDelta, renderDelta } from './model/delta.js'
 import { captureMarkedScreenshot, renderLegend } from './vision/screenshot.js';
 import { executeGoto } from './intent/execute.js';
 import { resolveConfig, parseFlags } from './config.js';
+import { categorizeError, renderError, CairnError } from './errors.js';
 
 /** Detect whether a string looks like a URL (vs an NL intent goal). */
 function isURL(s: string): boolean {
@@ -209,7 +210,12 @@ async function main(): Promise<void> {
         if (result.success) {
           console.log(`✓ ${result.message}`);
         } else {
-          console.error(`✗ ${result.message}`);
+          // Categorize the failure into an agent-actionable error code.
+          // The agent reads E_NOT_FOUND / E_AMBIGUOUS to decide the next step.
+          const code = result.ground?.status === 'notFound' ? 'E_NOT_FOUND'
+            : result.ground?.status === 'ambiguous' ? 'E_AMBIGUOUS'
+            : 'E_UNKNOWN';
+          console.error(renderError(new CairnError(code, result.message, 'See the message above for next steps.')));
           process.exit(1);
         }
         // Persist session state (URL may have changed via a navigated click)
@@ -251,7 +257,7 @@ async function main(): Promise<void> {
           console.log(renderDelta(delta));
         }
       } else {
-        console.error(`✗ ${result.message}`);
+        console.error(renderError(new CairnError('E_CLICK_FAILED', result.message, 'The ref may be stale — run "cairn look" for fresh refs, then retry. Or use "cairn look --visual".')));
         process.exit(1);
       }
       break;
@@ -270,7 +276,7 @@ async function main(): Promise<void> {
       if (result.success) {
         console.log(`✓ ${result.message}`);
       } else {
-        console.error(`✗ ${result.message}`);
+        console.error(renderError(new CairnError('E_TYPE_FAILED', result.message, 'The ref may be stale — run "cairn look" for fresh refs, then retry. Or use "cairn look --visual".')));
         process.exit(1);
       }
       break;
@@ -302,6 +308,10 @@ async function main(): Promise<void> {
 main()
   .then(() => process.exit(0))
   .catch((e) => {
-    console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    // Categorize the error and emit structured, agent-actionable output.
+    // The agent reads the error CODE (E_BROWSER_DEAD, E_REF_STALE, etc.) to
+    // decide retry vs look --visual vs give up — no free-text parsing needed.
+    const error = categorizeError(e);
+    console.error(renderError(error));
     process.exit(1);
   });
