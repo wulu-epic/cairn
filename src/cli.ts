@@ -48,10 +48,11 @@ const rawArgs = process.argv.slice(2);
 // parseFlags extracts these and returns the remaining args (command + command args)
 const { flags: cliFlags, remainingArgs } = parseFlags(rawArgs);
 
-// Parse remaining args for --session, --visual, --interactive-only
+// Parse remaining args for --session, --visual, --interactive-only, --include-hidden
 let sessionId = 'default';
 let visualMode = false;
 let interactiveOnly = false;
+let includeHidden = false;
 const cmdArgs: string[] = [];
 for (let i = 0; i < remainingArgs.length; i++) {
   if (remainingArgs[i] === '--session' && i + 1 < remainingArgs.length) {
@@ -61,6 +62,8 @@ for (let i = 0; i < remainingArgs.length; i++) {
     visualMode = true;
   } else if (remainingArgs[i] === '--interactive-only' || remainingArgs[i] === '-i') {
     interactiveOnly = true;
+  } else if (remainingArgs[i] === '--include-hidden') {
+    includeHidden = true;
   } else {
     cmdArgs.push(remainingArgs[i]);
   }
@@ -87,7 +90,8 @@ Commands:
   keypress <key>         Press a key (Enter, Escape, Control+a, etc.)
   drag <ref1> <ref2>     Drag element ref1 to element ref2
   look [--visual] [-i]   Show page tree; --visual adds a marked screenshot,
-                          -i shows only interactive elements (compact)
+                           -i shows only interactive elements (compact)
+                          --include-hidden surfaces CSS/aria-hidden content
   status                 Show session state (URL, region, backend, session info)
   goto <url|"nl goal">   Navigate to URL or run an NL intent
   extract <schema>       Structured data extraction (JSON output)
@@ -121,6 +125,8 @@ Options:
   --visual               Capture a marked screenshot (numbered boxes over
                           interactive elements, labeled with the same refs)
   --interactive-only, -i Show only interactive elements (compact, ~3x smaller)
+  --include-hidden       Surface CSS-hidden / aria-hidden content (disclaimers,
+                          deceptive patterns the a11y tree normally excludes)
   --help, -h             Show this help
 
 Environment variables:
@@ -175,7 +181,9 @@ async function main(): Promise<void> {
   switch (command as Command) {
     case 'look': {
       // Build the spatial-semantic page model and render it hierarchically.
-      const model = await buildPageModel(page);
+      // --include-hidden surfaces CSS-hidden / aria-hidden content (disclaimers,
+      // deceptive patterns) that the a11y tree normally excludes.
+      const model = await buildPageModel(page, { includeHidden });
 
       if (visualMode) {
         // Vision fallback: capture a marked screenshot (numbered boxes over

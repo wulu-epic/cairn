@@ -182,6 +182,13 @@ function renderNode(node: EnhancedNode, lines: string[], depth: number, options:
     parts.push(node.frameInaccessible ? '(cross-origin iframe)' : '(iframe)');
   }
 
+  // Hidden marker — only set when the model was built with includeHidden.
+  // Surfaces CSS-hidden / aria-hidden content (disclaimers, deceptive patterns)
+  // that the a11y tree normally excludes.
+  if (node.hidden) {
+    parts.push(`(hidden: ${node.hidden})`);
+  }
+
   // Interactive marker
   if (node.interactive) {
     const signals = node.interactivitySignals;

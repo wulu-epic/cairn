@@ -29,6 +29,8 @@ export interface EnhancedNode {
   children: EnhancedNode[];
   isIframe?: boolean;            // true if this node is an <iframe>
   frameInaccessible?: boolean;   // true if cross-origin iframe (content not walkable)
+  inShadowRoot?: boolean;        // true if this node lives inside an open shadow root
+  hidden?: 'display' | 'visibility' | 'aria';  // why a node is hidden (only set when includeHidden)
 }
 
 interface InteractivitySignalsFlat {
@@ -61,8 +63,8 @@ export function isMediaRich(m: MediaRich): boolean {
 }
 
 /** Build the page model from the current page state. */
-export async function buildPageModel(page: Page): Promise<PageModel> {
-  const result = await page.evaluate(buildModelScript) as
+export async function buildPageModel(page: Page, opts?: { includeHidden?: boolean }): Promise<PageModel> {
+  const result = await page.evaluate(buildModelScript(opts || {})) as
     { tree: EnhancedNode; mediaRich: MediaRich };
 
   const tree = result.tree;
@@ -101,9 +103,17 @@ export function getInteractiveNodes(model: PageModel): EnhancedNode[] {
 
 // ─── Browser-side script (injected via page.evaluate) ──────────
 
-const buildModelScript = `
+function buildModelScript(opts: { includeHidden?: boolean }): string {
+  var includeHiddenFlag = opts && opts.includeHidden ? 'true' : 'false';
+  return `
 (() => {
   ${INTERACTIVITY_SCRIPT}
+
+  // includeHidden: when true, do NOT prune display:none / visibility:hidden /
+  // aria-hidden content — instead mark it with a 'hidden' reason and keep
+  // walking. Lets an agent inspect CSS-hidden text (disclaimers, deceptive
+  // patterns). Default false preserves normal a11y-tree behavior.
+  var includeHidden = ${includeHiddenFlag};
 
   var SKIP_TAGS = ['script','style','meta','link','head','noscript','template','svg','path','br','wbr','col','area','map','track','source','param','base'];
 
@@ -236,12 +246,16 @@ const buildModelScript = `
     return null;
   }
 
-  function walk(el) {
+  function walk(el, inShadow) {
     var tag = el.tagName.toLowerCase();
     if (SKIP_TAGS.indexOf(tag) >= 0) return null;
 
     var cs = getComputedStyle(el);
-    if (cs.display === 'none' || cs.visibility === 'hidden') return null;
+    var hiddenReason = null;
+    if (cs.display === 'none') hiddenReason = 'display';
+    else if (cs.visibility === 'hidden') hiddenReason = 'visibility';
+    if (!hiddenReason && el.getAttribute('aria-hidden') === 'true') hiddenReason = 'aria';
+    if (hiddenReason && !includeHidden) return null;
 
     // Phase 2: media-rich detection (canvas/WebGL/shadow-DOM).
     // The structured model is blind to these, so we count them to trigger
@@ -271,8 +285,18 @@ const buildModelScript = `
     var children = [];
     var frameInaccessible = false;
     for (var i = 0; i < el.children.length; i++) {
-      var childNode = walk(el.children[i]);
+      var childNode = walk(el.children[i], inShadow);
       if (childNode) children.push(childNode);
+    }
+
+    // Open shadow root: recurse into its children so shadow-DOM controls
+    // surface as actionable refs (bug #6 — previously detected but not surfaced).
+    // Closed roots (el.shadowRoot === null) are inaccessible and stay pruned.
+    if (el.shadowRoot !== null) {
+      for (var s = 0; s < el.shadowRoot.children.length; s++) {
+        var shadowChild = walk(el.shadowRoot.children[s], true);
+        if (shadowChild) children.push(shadowChild);
+      }
     }
 
     // Iframe support: try to access same-origin iframe content.
@@ -285,7 +309,7 @@ const buildModelScript = `
         if (iframeDoc && iframeDoc.body) {
           // Same-origin iframe — walk its body's children into our tree
           for (var j = 0; j < iframeDoc.body.children.length; j++) {
-            var frameChild = walk(iframeDoc.body.children[j]);
+            var frameChild = walk(iframeDoc.body.children[j], inShadow);
             if (frameChild) children.push(frameChild);
           }
         } else {
@@ -325,7 +349,9 @@ const buildModelScript = `
       region: region || undefined,
       children: children,
       isIframe: tag === 'iframe' ? true : undefined,
-      frameInaccessible: frameInaccessible ? true : undefined
+      frameInaccessible: frameInaccessible ? true : undefined,
+      inShadowRoot: inShadow ? true : undefined,
+      hidden: hiddenReason || undefined
     };
   }
 
@@ -340,3 +366,4 @@ const buildModelScript = `
   };
 })()
 `;
+}
