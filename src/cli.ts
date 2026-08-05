@@ -15,6 +15,7 @@ import { buildPageModel } from './model/page-model.js';
 import { renderPage } from './render/renderer.js';
 import { clickByRef } from './actions/click.js';
 import { typeByRef } from './actions/type.js';
+import { waitForPageSettled, computeDelta, renderDelta } from './model/delta.js';
 
 // ─── Arg parsing ───────────────────────────────────────────────
 
@@ -144,14 +145,18 @@ async function main(): Promise<void> {
         console.error('Usage: abt click <ref>');
         process.exit(1);
       }
-      // Stamp fresh data-abt-ref attributes before resolving
-      await buildPageModel(page);
+      // Build model before click (for delta comparison) + stamp attributes
+      const prevModel = await buildPageModel(page);
       const result = await clickByRef(page, ref);
       if (result.success) {
         console.log(`✓ ${result.message}`);
-        // Show what's now on the page (self-describing)
-        const model = await buildPageModel(page);
-        console.log(renderPage(model, { focusedRegion: session.loadState()?.focusedRegion }));
+        // Wait for page to settle, then show compact delta (not full dump)
+        await waitForPageSettled(page);
+        const newModel = await buildPageModel(page);
+        const delta = computeDelta(prevModel, newModel);
+        if (delta.nodes.length > 0 || delta.urlChanged) {
+          console.log(renderDelta(delta));
+        }
       } else {
         console.error(`✗ ${result.message}`);
         process.exit(1);
