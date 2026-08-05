@@ -23,7 +23,7 @@ import { categorizeError, renderError, CairnError } from './errors.js';
 
 /** Detect whether a string looks like a URL (vs an NL intent goal). */
 function isURL(s: string): boolean {
-  // Any protocol:// URL (http, https, file, ftp, etc.)
+  if (s.startsWith('http://') || s.startsWith('https://') || s.startsWith('file://')) return true;
   if (/^\w+:\/\//i.test(s)) return true;
   // Bare domain: example.com, sub.example.com:8080/path, localhost:3000
   if (/^localhost(:\d+)?(\/.*)?$/i.test(s)) return true;

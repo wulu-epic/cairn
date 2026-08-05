@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Login — Test Fixture</title>
+</head>
+<body>
+  <main>
+    <h1>Login</h1>
+    <form id="login-form" onsubmit="event.preventDefault(); document.getElementById('result').textContent = 'Submitted: ' + document.getElementById('email').value;">
+      <div>
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" placeholder="Enter your email">
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" placeholder="Enter your password">
+      </div>
+      <button type="submit">Sign In</button>
+    </form>
+    <p id="result">Not submitted yet</p>
+  </main>
+</body>
+</html>

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Div as Button — Test Fixture</title>
+</head>
+<body>
+  <main>
+    <h1>Div as Button</h1>
+    <!-- A div with onclick + cursor:pointer — NOT a native <button>.
+         Cairn's inferred-interactivity detection should flag this as interactive
+         (cursorPointer signal) even though it has no ARIA role or native interactivity. -->
+    <div id="clickable-div"
+         onclick="document.getElementById('result').textContent = 'clicked!'"
+         style="cursor: pointer; padding: 10px 20px; background: #007bff; color: white; display: inline-block; border-radius: 4px;">
+      Click Me
+    </div>
+    <p id="result">Not clicked yet</p>
+  </main>
+</body>
+</html>

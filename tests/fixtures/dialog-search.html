@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dialog Search — Test Fixture</title>
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="#" id="search-link"
+         onclick="document.getElementById('search-dialog').style.display = 'block'; document.getElementById('search-input').focus(); return false;">
+        Search
+      </a>
+    </nav>
+  </header>
+  <main>
+    <h1>Welcome</h1>
+    <p>Click the search link to open the search dialog.</p>
+  </main>
+  <!-- Hidden dialog with a search input — mimics Wikipedia/DuckDuckGo pattern
+       where the search field is behind a link→dialog. Tests the click-to-reveal
+       fallback in execute.ts. -->
+  <div id="search-dialog"
+       style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 20px; background: white; border: 1px solid #ccc; box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index: 1000;">
+    <input type="search" id="search-input" placeholder="Search..." aria-label="Search">
+    <button onclick="document.getElementById('search-dialog').style.display = 'none';">Close</button>
+    <p id="search-result"></p>
+  </div>
+  <script>
+    document.getElementById('search-input').addEventListener('input', function() {
+      document.getElementById('search-result').textContent = 'Searching: ' + this.value;
+    });
+  </script>
+</body>
+</html>
