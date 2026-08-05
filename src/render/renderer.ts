@@ -152,7 +152,9 @@ function renderNode(node: EnhancedNode, lines: string[], depth: number, options:
   const indent = '  '.repeat(depth);
 
   // Skip non-interactive, non-container, non-text nodes unless showAll
-  if (!options.showAll && !node.interactive && node.children.length === 0 && !node.text) {
+  // Exception: always show iframe nodes so the agent knows about
+  // cross-origin iframes it can't see structurally.
+  if (!options.showAll && !node.interactive && node.children.length === 0 && !node.text && !node.isIframe) {
     return;
   }
 
@@ -173,6 +175,12 @@ function renderNode(node: EnhancedNode, lines: string[], depth: number, options:
   }
 
   parts.push(`[ref=${node.ref}]`);
+
+  // Iframe markers — show the agent when content is inside an iframe
+  // and whether it's accessible (same-origin) or not (cross-origin)
+  if (node.isIframe) {
+    parts.push(node.frameInaccessible ? '(cross-origin iframe)' : '(iframe)');
+  }
 
   // Interactive marker
   if (node.interactive) {

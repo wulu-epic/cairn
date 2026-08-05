@@ -27,6 +27,8 @@ export interface EnhancedNode {
   interactivitySignals?: InteractivitySignalsFlat;
   region?: string;
   children: EnhancedNode[];
+  isIframe?: boolean;            // true if this node is an <iframe>
+  frameInaccessible?: boolean;   // true if cross-origin iframe (content not walkable)
 }
 
 interface InteractivitySignalsFlat {
@@ -103,7 +105,7 @@ const buildModelScript = `
 (() => {
   ${INTERACTIVITY_SCRIPT}
 
-  var SKIP_TAGS = ['script','style','meta','link','head','noscript','template','svg','path','br','wbr','iframe','col','area','map','track','source','param','base'];
+  var SKIP_TAGS = ['script','style','meta','link','head','noscript','template','svg','path','br','wbr','col','area','map','track','source','param','base'];
 
   var refCounter = 0;
   function nextRef() { return 'e' + (++refCounter); }
@@ -153,6 +155,7 @@ const buildModelScript = `
       'section': 'region',
       'article': 'article',
       'dialog': 'dialog',
+      'iframe': 'iframe',
       'figure': 'figure',
       'figcaption': 'caption',
       'details': 'group',
@@ -266,9 +269,33 @@ const buildModelScript = `
     var region = getRegion(el);
 
     var children = [];
+    var frameInaccessible = false;
     for (var i = 0; i < el.children.length; i++) {
       var childNode = walk(el.children[i]);
       if (childNode) children.push(childNode);
+    }
+
+    // Iframe support: try to access same-origin iframe content.
+    // Cross-origin iframes throw on contentDocument access — we catch
+    // and mark them as inaccessible so the agent knows there's content
+    // it can't see structurally (vision fallback needed).
+    if (tag === 'iframe') {
+      try {
+        var iframeDoc = el.contentDocument;
+        if (iframeDoc && iframeDoc.body) {
+          // Same-origin iframe — walk its body's children into our tree
+          for (var j = 0; j < iframeDoc.body.children.length; j++) {
+            var frameChild = walk(iframeDoc.body.children[j]);
+            if (frameChild) children.push(frameChild);
+          }
+        } else {
+          // contentDocument is null (not loaded or cross-origin)
+          frameInaccessible = true;
+        }
+      } catch (e) {
+        // SecurityError: cross-origin iframe
+        frameInaccessible = true;
+      }
     }
 
     // Prune: skip elements with no content
@@ -296,7 +323,9 @@ const buildModelScript = `
       interactive: inter.interactive,
       interactivitySignals: inter.interactive ? inter.signals : undefined,
       region: region || undefined,
-      children: children
+      children: children,
+      isIframe: tag === 'iframe' ? true : undefined,
+      frameInaccessible: frameInaccessible ? true : undefined
     };
   }
 
