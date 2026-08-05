@@ -11,6 +11,12 @@
  * grounding is ambiguous or fails, it returns the candidates and suggests
  * `abt look --visual` for visual disambiguation (the agent, which IS an LLM,
  * then resolves it).
+ *
+ * Multi-step intent composition: when a type intent (e.g. "type X into the
+ * search field") returns notFound because the field is hidden behind a
+ * link→dialog pattern (Wikipedia, DuckDuckGo), the executor automatically
+ * clicks the matching link/button to open the dialog, then re-grounds and
+ * types. See clickToReveal() below.
  */
 
 import type { Page } from 'playwright';
@@ -78,14 +84,13 @@ async function clickToReveal(
   const newModel = await buildPageModel(page);
   const reGround = groundIntent(intent, newModel);
 
-  if (reGround.status === 'match') {
-    return { newModel, ground: reGround, clickedRef: clickGround.ref };
-  }
-
-  // Even if re-grounding didn't find a match, return the result so the caller
-  // can report that a click happened but the field still wasn't found.
+  // Return the result regardless of match status — the caller handles each case.
+  // Even if re-grounding didn't find a match, the page changed (dialog opened),
+  // so we report what happened.
   return { newModel, ground: reGround, clickedRef: clickGround.ref };
 }
+
+// ─── Main executor ─────────────────────────────────────────────
 
 /**
  * Execute a natural-language `goto` intent end-to-end.
@@ -125,16 +130,53 @@ export async function executeGoto(
       const revealed = await clickToReveal(page, intent, currentModel);
       if (revealed) {
         if (revealed.ground.status === 'match') {
-          // Found the field after clicking to reveal — type into it
-          const typeResult = await typeByRef(page, revealed.ground.ref, intent.text);
-          if (typeResult.success) {
-            // Verify — wait for settle, compute delta from the post-click model
+          // Found the field after clicking to reveal — but the dialog/overlay
+          // may still be animating (CSS transitions) or the DOM may have been
+          // re-rendered (invalidating data-abt-ref attributes). Wait, re-build
+          // a fresh model, re-ground, and try to type.
+          await page.waitForTimeout(800);
+          const freshModel = await buildPageModel(page);
+          const freshGround = groundIntent(intent, freshModel);
+
+          let typed = false;
+          let typeMsg = '';
+
+          if (freshGround.status === 'match') {
+            const typeResult = await typeByRef(page, freshGround.ref, intent.text);
+            if (typeResult.success) {
+              typed = true;
+              typeMsg = typeResult.message;
+            }
+          }
+
+          // Direct-locator fallback: if ref-based typing failed (the dialog's
+          // JS may have re-rendered and stripped data-abt-ref attributes), use
+          // a Playwright locator to find the first visible input on the page.
+          // This handles Wikipedia's search dialog which re-renders on open.
+          if (!typed) {
+            try {
+              const inputLocator = page.locator('input:visible, textarea:visible').first();
+              await inputLocator.waitFor({ state: 'visible', timeout: 3000 });
+              await inputLocator.fill(intent.text, { timeout: 5000 });
+              const inputInfo = await inputLocator.evaluate((el: HTMLElement) => ({
+                tag: el.tagName.toLowerCase(),
+                name: el.getAttribute('aria-label') || el.getAttribute('placeholder') || '',
+              })).catch(() => ({ tag: 'input', name: '' }));
+              typed = true;
+              typeMsg = `typed "${intent.text}" into ${inputInfo.tag}${inputInfo.name ? ` "${inputInfo.name}"` : ''} (via direct locator — dialog re-rendered)`;
+            } catch {
+              // Direct locator also failed
+            }
+          }
+
+          if (typed) {
+            // Verify — wait for settle, compute delta
             await waitForPageSettled(page);
             const finalModel = await buildPageModel(page);
-            const delta = computeDelta(revealed.newModel, finalModel);
+            const delta = computeDelta(freshModel, finalModel);
 
             const parts: string[] = [];
-            parts.push(`auto-opened dialog via [${revealed.clickedRef}], then ${typeResult.message}`);
+            parts.push(`auto-opened dialog via [${revealed.clickedRef}], then ${typeMsg}`);
             if (delta.urlChanged) {
               parts.push(`navigated to ${finalModel.url}`);
             } else if (delta.nodes.length > 0) {
@@ -147,18 +189,18 @@ export async function executeGoto(
               success: true,
               message: parts.join('\n'),
               intent,
-              ground: revealed.ground,
+              ground: freshGround.status === 'match' ? freshGround : revealed.ground,
               delta,
               newModel: finalModel,
             };
           }
         }
-        // Clicked but re-grounding still failed — report what happened
+        // Clicked but typing still failed — report what happened
         const revealMsg = revealed.ground.status === 'notFound'
           ? `auto-clicked [${revealed.clickedRef}] to open a dialog, but still couldn't find "${intent.target}" —\n${renderGroundResult(revealed.ground)}\n→ try "abt look --visual" to see the dialog contents.`
           : revealed.ground.status === 'ambiguous'
             ? `auto-clicked [${revealed.clickedRef}] to open a dialog, but found multiple matches for "${intent.target}" —\n${renderGroundResult(revealed.ground)}\n→ specify which one or run "abt look --visual".`
-            : `auto-clicked [${revealed.clickedRef}] but couldn't complete the type action.`;
+            : `auto-clicked [${revealed.clickedRef}] to open a dialog, but couldn't type into the field. The dialog may use a custom input widget — try "abt look --visual" then "abt type <ref> <text>".`;
         return {
           success: false,
           message: revealMsg,
