@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "cairn",
+  "description": "Agent-first browser automation. Act by stable ref, never by coordinate.",
+  "owner": {
+    "name": "Cairn",
+    "email": "cairn@example.com"
+  },
+  "plugins": [
+    {
+      "name": "cairn",
+      "description": "Agent-first browser automation CLI. Navigate pages by stable ref, get compact hierarchical output, and see only what changed after each action (deltas). NL intents collapse perceive→ground→act→verify into one command. Use whenever the user needs to interact with websites, fill forms, click buttons, take screenshots, test web apps, or automate any browser task.",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/cairn"
+      ],
+      "category": "development"
+    }
+  ]
+}

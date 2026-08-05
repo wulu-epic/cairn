@@ -142,7 +142,7 @@ Like agent-browser, this ships as: a **CLI binary + a skill that injects usage i
 2. **Vision fallback.** Marked screenshot on demand; canvas/WebGL/shadow-DOM detection → vision path. ✅ done.
 3. **High-level `goto` intent.** Internal perceive→ground→act→verify loop with one cheap vision call max.
 4. **Steel Browser integration + anti-detect.** Self-hosted chrome farm (Apache-2.0, free — `steel-dev/steel-browser`), session mgmt, proxy rotation. ✅ done.
-5. **Skill packaging.** CLI + injected instructions; polish the agent-facing surface. ✅ done (renamed to Cairn; `skill/SKILL.md` + `skill/references/advanced-patterns.md`).
+5. **Skill packaging.** CLI + injected instructions; polish the agent-facing surface. ✅ done (renamed to Cairn; `skills/cairn/SKILL.md` + `skills/cairn/references/advanced-patterns.md`).
 6. **Scale path.** Browserbase for managed; optional Rust CDP-orchestrator if profiling demands.
 
 ---

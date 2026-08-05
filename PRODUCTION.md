@@ -16,7 +16,7 @@
 | NL `goto` intent (collapse the loop) | `intent/execute.ts` runs perceive→ground→act→verify deterministically, no in-tool LLM. Click-to-reveal handles Wikipedia/DuckDuckGo dialog-search. |
 | Vision fallback | `vision/screenshot.ts` overlays numbered boxes over *live* bboxes with the *same* refs. Vision perceives, refs ground. |
 | Pluggable backend + auto-fallback | Steel (self-hosted chrome farm) or local Chrome; falls back to local if Steel is down (`session.ts:69-80`). |
-| Skill packaging | `skill/SKILL.md` + references, modeled on agent-browser's format. |
+| Skill packaging | `skills/cairn/SKILL.md` + references, modeled on agent-browser's format. |
 
 **What's MVP-level / unproven (the gap):**
 
@@ -109,7 +109,7 @@ The ordering principle: **Cairn's differentiator is grounding quality + step eff
 *Goal: a user can `npx cairn` and debug failures.*
 
 9. **Verify + fix the build.** Run `npm run build`, fix whatever `tsc` complains about, confirm `node dist/cli.js goto https://example.com` works (not just `tsx`). Wire a `prepublish` + `postinstall` (Playwright browser download).
-10. **Publish to npm.** `cairn-browser` → npm with a `0.x` semver. Verify the skill (`skill/SKILL.md`) loads in an agent runtime end-to-end.
+10. **Publish to npm.** `cairn-browser` → npm with a `0.x` semver. Verify the skill (`skills/cairn/SKILL.md`) loads in an agent runtime end-to-end.
 11. **`--json` output mode + `--explain` grounding debug + `--trace`.** Structured output for reliable agent consumption; `--explain` surfaces the `reasons[]` the grounder already computes; `--trace` wraps Playwright tracing for failure debugging.
 
 ### Tier 4 — Scale (only when self-hosting starts to hurt)

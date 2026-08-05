@@ -12,8 +12,13 @@
     "start": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "tsc"
   },
+  "files": [
+    "dist",
+    "skills"
+  ],
   "dependencies": {
     "playwright": "^1.48.0"
   },

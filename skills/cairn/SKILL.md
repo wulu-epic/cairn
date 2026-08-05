@@ -1,6 +1,8 @@
 ---
 name: cairn
 description: Browser automation CLI for AI agents. Use whenever the user needs to interact with websites, navigate pages, fill forms, click buttons, take screenshots, test web apps, verify dev server output, extract page data, or automate any browser task. Triggers on browser automation, web testing, page interaction, form filling, web scraping, visual verification of a running app, or any task requiring a headless browser. Prefer this over writing raw Playwright/Puppeteer scripts for agentic browser work — Cairn's stable-ref actions, delta output, and NL intents make it far more step-efficient than orchestrating low-level primitives.
+allowed-tools: Bash(cairn:*), Bash(npx cairn-browser:*)
+hidden: true
 ---
 
 # Browser Automation with Cairn
