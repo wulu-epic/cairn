@@ -96,9 +96,71 @@ On iterative tasks (click → observe → click → observe), our delta output s
 2. **Feature breadth**: screenshots, MCP, network mocking, tabs, plugins, semantic locators — all things we haven't built yet.
 3. **Production readiness**: battle-tested, npm published, plugin ecosystem.
 
-### Next steps for ai-browser-tester to close the gap
-1. Add an `--interactive-only` flag to `look` (match agent-browser's `-i` compactness)
-2. Add screenshot support (Phase 2 vision fallback)
-3. Add semantic locators (`find role button --name "Submit"`) as a complement to refs
-4. Package as a skill (like agent-browser ships)
-5. Add MCP integration
+### Phase 3 Re-Test: NL `goto` intent (2025-08-05)
+
+After building Phase 3 (the NL `goto "<nl goal>"` intent), we re-ran the same task to measure the improvement. The `goto` command now accepts either a URL or a natural-language intent — the tool runs perceive→ground→act→verify internally using deterministic logic (no in-tool LLM call).
+
+**Task:** Fill the email field on a login form (same structural task as the Wikipedia search — find an input, type into it).
+
+#### MVP approach (ref-based, Phase 1)
+
+| Step | Command | Output |
+|------|---------|--------|
+| 1 | `abt goto <url>` | 987 bytes — full hierarchical tree with regions + refs |
+| 2 | `abt type e11 "hello"` | 53 bytes — `✓ typed "hello" into [e11] input` |
+
+**Total: 2 commands, 1040 bytes.** The agent must parse the step-1 tree, identify that `[e11]` is the email textbox, then issue `type e11`.
+
+#### Phase 3 approach (NL intent)
+
+| Step | Command | Output |
+|------|---------|--------|
+| 1 | `abt goto <url>` | 987 bytes — same self-describing tree |
+| 2 | `abt goto "type hello into the email field"` | 83 bytes — `✓ typed "hello" into [e11] input` + delta `(no visible changes detected)` |
+
+**Total: 2 commands, 1070 bytes.** The agent states intent in English — no need to parse the tree or find the ref. The tool grounds "email field" → `[e11]` internally via fuzzy token overlap + role-hint + typeability scoring.
+
+#### What Phase 3 changes
+
+| Metric | MVP (ref-based) | Phase 3 (NL intent) |
+|--------|----------------|---------------------|
+| Commands per task | 2 | 2 (same) |
+| Output bytes | 1040 | 1070 (+3%, includes delta) |
+| Agent must parse page tree? | ✅ Yes (find e11) | ❌ No (tool grounds automatically) |
+| Agent must know ref system? | ✅ Yes | ❌ No (states intent in English) |
+| Built-in delta verification? | ❌ No (type doesn't compute delta) | ✅ Yes (goto intent includes delta) |
+| Ambiguity handling? | ❌ Wrong ref = failure | ✅ Reports candidates + suggests `look --visual` |
+| Not-found handling? | ❌ Cryptic Playwright error | ✅ "not found, closest: ..." with suggestions |
+
+**The core Phase 3 win is cognitive load, not command count.** Both approaches take 2 commands, but Phase 3 eliminates the agent's need to understand the page structure and map natural intent to a ref. The agent says "type hello into the email field" and the tool handles grounding. This is the "collapse the loop" principle from DESIGN.md §3.5 — the tool runs perceive→ground→act→verify internally, so the agent doesn't have to orchestrate those steps.
+
+#### Grounding quality findings
+
+Dogfooding on real pages revealed two important edge cases:
+
+1. **Typeability scoring (fixed):** On Wikipedia's main page, the grounder initially matched "search" to a `<span>Search</span>` label (high token overlap) instead of looking for an actual `<input>`. Fix: for type intents, strongly prefer typeable roles (textbox/searchbox/combobox/textarea/contenteditable, +0.20 bonus) and heavily penalize non-typeable matches (-0.55). Now correctly returns "not found" when no real input field exists.
+
+2. **Shadow-DOM / dialog-based search (known limitation):** Wikipedia and DuckDuckGo both hide their search inputs behind links (open a dialog) or shadow DOM (closed custom elements). The structured model can't see inside these, so the NL type intent correctly returns "not found" and suggests `abt look --visual`. A future enhancement could chain intents: "type X into the search field" → if not found, click the nearest "Search" link → re-ground in the dialog → type. This is the multi-step intent composition planned for a later phase.
+
+#### Intent types verified
+
+All three intent kinds work end-to-end on the test login form:
+
+| Intent | Example | Result |
+|--------|---------|--------|
+| Type | `goto "type hello into the email field"` | ✓ typed into [e11] |
+| Type | `goto "type secret123 into the password field"` | ✓ typed into [e14] |
+| Click | `goto "click the sign in button"` | ✓ clicked [e15] |
+| Navigate | `goto "go to settings"` | ✓ clicked [e5], detected URL change |
+| Not-found | `goto "click the submit button"` | ✗ not found, closest: [e15] [e16] |
+
+### Updated next steps for ai-browser-tester
+
+1. ~~Add screenshot support (Phase 2 vision fallback)~~ ✅ **Done** — `look --visual` captures marked screenshots with numbered boxes over interactive elements
+2. ~~Add NL `goto` intent (Phase 3)~~ ✅ **Done** — deterministic perceive→ground→act→verify in one command
+3. Add an `--interactive-only` flag to `look` (match agent-browser's `-i` compactness)
+4. Multi-step intent composition: "type X into the search field" → auto-click search link → re-ground in dialog
+5. Add semantic locators (`find role button --name "Submit"`) as a complement to refs
+6. Package as a skill (like agent-browser ships)
+7. Add MCP integration
+8. Optional: local embedding model (all-MiniLM-L6-v2 via @xenova/transformers) as a lazy fallback for synonym matching when deterministic grounding returns not-found/ambiguous
