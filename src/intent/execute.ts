@@ -122,7 +122,7 @@ export async function executeGoto(
   const ground = groundIntent(intent, currentModel);
 
   if (ground.status === 'notFound') {
-    // Click-to-reveal fallback (multi-step intent composition):
+    // click-to-reveal fallback (multi-step intent composition):
     // For type intents, the target field (e.g. "search") might be hidden behind
     // a link→dialog pattern (Wikipedia, DuckDuckGo). Try clicking a matching
     // link/button to reveal it, then re-ground and type.
