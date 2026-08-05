@@ -23,8 +23,11 @@ import type { Page } from 'playwright';
 import { buildPageModel, type PageModel } from '../model/page-model.js';
 import { clickByRef } from '../actions/click.js';
 import { typeByRef } from '../actions/type.js';
+import { hoverByRef } from '../actions/hover.js';
+import { scrollByRef, scrollDirection } from '../actions/scroll.js';
+import { selectByRef } from '../actions/select.js';
 import { waitForPageSettled, computeDelta, renderDelta, type DeltaResult } from '../model/delta.js';
-import { parseIntent, type Intent, type ClickIntent, type TypeIntent } from './parser.js';
+import { parseIntent, type Intent, type ClickIntent, type TypeIntent, type SelectIntent } from './parser.js';
 import { groundIntent, groundIntentWithFallback, renderGroundResult, TYPEABLE_ROLES, type GroundResult } from './grounding.js';
 
 export interface ExecuteResult {
@@ -117,6 +120,29 @@ export async function executeGoto(
 
   // 2. Build the page model (if not provided)
   const currentModel = model ?? await buildPageModel(page);
+
+  // 2.5. Scroll directional intents don't need grounding — just scroll the
+  // page. "scroll down", "scroll to top", etc. have no target element.
+  if (intent.kind === 'scroll' && intent.direction) {
+    const scrollResult = await scrollDirection(page, intent.direction);
+    await waitForPageSettled(page);
+    const newModel = await buildPageModel(page);
+    const delta = computeDelta(currentModel, newModel);
+    const parts: string[] = [scrollResult.message];
+    if (delta.urlChanged) {
+      parts.push(`navigated to ${newModel.url}`);
+    } else if (delta.nodes.length > 0) {
+      const deltaStr = renderDelta(delta);
+      parts.push(deltaStr.split('\n').slice(0, 8).join('\n'));
+    }
+    return {
+      success: scrollResult.success,
+      message: parts.join('\n'),
+      intent,
+      delta,
+      newModel,
+    };
+  }
 
   // 3. Ground the intent → find the target ref
   // Uses the embeddings fallback: deterministic grounding first (fast path),
@@ -243,11 +269,18 @@ export async function executeGoto(
   // For navigate intents, the action is a click (on a link)
   const actionKind = intent.kind === 'navigate' ? 'click' : intent.kind;
 
-  let actionResult: { success: boolean; message: string; ref: string };
+  let actionResult: { success: boolean; message: string; ref?: string };
   if (actionKind === 'click') {
     actionResult = await clickByRef(page, ref);
   } else if (actionKind === 'type') {
     actionResult = await typeByRef(page, ref, (intent as Extract<Intent, { kind: 'type' }>).text);
+  } else if (actionKind === 'hover') {
+    actionResult = await hoverByRef(page, ref);
+  } else if (actionKind === 'scroll') {
+    actionResult = await scrollByRef(page, ref);
+  } else if (actionKind === 'select') {
+    const sel = intent as Extract<Intent, { kind: 'select' }>;
+    actionResult = await selectByRef(page, ref, sel.value);
   } else {
     return {
       success: false,

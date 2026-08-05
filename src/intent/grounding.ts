@@ -184,7 +184,7 @@ function scoreNode(node: EnhancedNode, intent: Intent): GroundCandidate {
   let score = 0;
   const reasons: string[] = [];
 
-  const targetText = intent.target;
+  const targetText = intent.target ?? '';
   const targetTokens = tokenize(targetText);
   const nodeText = nodeSearchText(node);
   const nodeTokens = tokenize(nodeText);
@@ -249,6 +249,19 @@ function scoreNode(node: EnhancedNode, intent: Intent): GroundCandidate {
   if (intent.kind === 'navigate' && node.role === 'link') {
     score += 0.10;
     reasons.push('navigate prefers link');
+  }
+
+  // For select intents, prefer combobox/listbox (dropdown) elements.
+  // A native <select> maps to 'combobox' role. Strongly prefer these and
+  // penalize non-selectable elements (buttons, links) that can't hold options.
+  if (intent.kind === 'select') {
+    if (node.role === 'combobox' || node.role === 'listbox') {
+      score += 0.20;
+      reasons.push('selectable role for select intent');
+    } else {
+      score -= 0.30;
+      reasons.push('non-selectable for select intent');
+    }
   }
 
   // Only interactive nodes should be actionable

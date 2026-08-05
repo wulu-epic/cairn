@@ -15,6 +15,11 @@ import { buildPageModel } from './model/page-model.js';
 import { renderPage } from './render/renderer.js';
 import { clickByRef } from './actions/click.js';
 import { typeByRef } from './actions/type.js';
+import { hoverByRef } from './actions/hover.js';
+import { scrollByRef, scrollDirection, isScrollDirection } from './actions/scroll.js';
+import { selectByRef } from './actions/select.js';
+import { keypress, normalizeKey } from './actions/keypress.js';
+import { dragByRef } from './actions/drag.js';
 import { waitForPageSettled, computeDelta, renderDelta } from './model/delta.js';
 import { captureMarkedScreenshot, renderLegend } from './vision/screenshot.js';
 import { executeGoto } from './intent/execute.js';
@@ -60,7 +65,7 @@ for (let i = 0; i < remainingArgs.length; i++) {
 const command = cmdArgs[0];
 const commandArgs = cmdArgs.slice(1);
 
-const COMMANDS = ['focus', 'click', 'type', 'look', 'status', 'goto', 'extract', 'release'] as const;
+const COMMANDS = ['focus', 'click', 'type', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'release'] as const;
 type Command = (typeof COMMANDS)[number];
 
 function printHelp(): void {
@@ -72,6 +77,11 @@ Commands:
   focus <region|ref>     Zoom into a region/subtree (token-efficient)
   click <ref>            Deterministic click by stable ref
   type <ref> <text>      Fill a field by ref
+  hover <ref>            Hover over an element (dropdowns, tooltips)
+  scroll <ref|dir>       Scroll element into view, or page up/down/top/bottom
+  select <ref> <value>   Select an option in a dropdown by ref
+  keypress <key>         Press a key (Enter, Escape, Control+a, etc.)
+  drag <ref1> <ref2>     Drag element ref1 to element ref2
   look [--visual] [-i]   Show page tree; --visual adds a marked screenshot,
                           -i shows only interactive elements (compact)
   status                 Show session state (URL, region, backend, session info)
@@ -282,8 +292,107 @@ async function main(): Promise<void> {
       break;
     }
 
+    case 'hover': {
+      const ref = commandArgs[0];
+      if (!ref) {
+        console.error('Usage: cairn hover <ref>');
+        process.exit(1);
+      }
+      const prevModel = await buildPageModel(page);
+      const result = await hoverByRef(page, ref);
+      if (result.success) {
+        console.log(`✓ ${result.message}`);
+        await waitForPageSettled(page);
+        const newModel = await buildPageModel(page);
+        const delta = computeDelta(prevModel, newModel);
+        if (delta.nodes.length > 0) console.log(renderDelta(delta));
+      } else {
+        console.error(renderError(new CairnError('E_REF_STALE', result.message, 'Run "cairn look" for fresh refs, then retry.')));
+        process.exit(1);
+      }
+      break;
+    }
+
+    case 'scroll': {
+      const arg = commandArgs[0];
+      if (!arg) {
+        console.error('Usage: cairn scroll <ref|up|down|top|bottom>');
+        process.exit(1);
+      }
+      await buildPageModel(page);
+      let result;
+      if (isScrollDirection(arg)) {
+        result = await scrollDirection(page, arg);
+      } else {
+        result = await scrollByRef(page, arg);
+      }
+      if (result.success) {
+        console.log(`✓ ${result.message}`);
+        await waitForPageSettled(page);
+      } else {
+        console.error(renderError(new CairnError('E_REF_STALE', result.message, 'Run "cairn look" for fresh refs, then retry.')));
+        process.exit(1);
+      }
+      break;
+    }
+
+    case 'select': {
+      const ref = commandArgs[0];
+      const value = commandArgs.slice(1).join(' ');
+      if (!ref || !value) {
+        console.error('Usage: cairn select <ref> <value>');
+        process.exit(1);
+      }
+      await buildPageModel(page);
+      const result = await selectByRef(page, ref, value);
+      if (result.success) {
+        console.log(`✓ ${result.message}`);
+      } else {
+        console.error(renderError(new CairnError('E_REF_STALE', result.message, 'Run "cairn look" for fresh refs, then retry.')));
+        process.exit(1);
+      }
+      break;
+    }
+
+    case 'keypress': {
+      const key = commandArgs.join(' ');
+      if (!key) {
+        console.error('Usage: cairn keypress <key>');
+        console.error('  Examples: cairn keypress Enter, cairn keypress Escape, cairn keypress Control+a');
+        process.exit(1);
+      }
+      const result = await keypress(page, key);
+      if (result.success) {
+        console.log(`✓ ${result.message}`);
+        await waitForPageSettled(page);
+      } else {
+        console.error(renderError(new CairnError('E_UNKNOWN', result.message, 'Check the key name. Use Enter, Escape, Tab, Control+a, etc.')));
+        process.exit(1);
+      }
+      break;
+    }
+
+    case 'drag': {
+      const sourceRef = commandArgs[0];
+      const targetRef = commandArgs[1];
+      if (!sourceRef || !targetRef) {
+        console.error('Usage: cairn drag <source-ref> <target-ref>');
+        process.exit(1);
+      }
+      await buildPageModel(page);
+      const result = await dragByRef(page, sourceRef, targetRef);
+      if (result.success) {
+        console.log(`✓ ${result.message}`);
+        await waitForPageSettled(page);
+      } else {
+        console.error(renderError(new CairnError('E_REF_STALE', result.message, 'Run "cairn look" for fresh refs, then retry.')));
+        process.exit(1);
+      }
+      break;
+    }
+
     case 'extract': {
-      console.error('[stub] extract — structured extraction is not yet implemented');
+      console.error('[stub] extract — structured extraction will be implemented in the next step');
       process.exit(1);
     }
 

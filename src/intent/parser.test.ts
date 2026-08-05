@@ -115,3 +115,81 @@ describe('parseIntent — edge cases', () => {
     expect(intent).toBeNull();
   });
 });
+
+// ─── Hover intents ──────────────────────────────────────────────
+
+describe('parseIntent — hover intents', () => {
+  it('parses "hover over the menu"', () => {
+    const { intent } = parseIntent('hover over the menu');
+    expect(intent).toMatchObject({ kind: 'hover', target: 'menu' });
+  });
+
+  it('parses "hover the profile button" with roleHint', () => {
+    const { intent } = parseIntent('hover the profile button');
+    expect(intent).toMatchObject({ kind: 'hover', target: 'profile', roleHint: 'button' });
+  });
+
+  it('parses "hover over the account link in the nav" with region', () => {
+    const { intent } = parseIntent('hover over the account link in the nav');
+    expect(intent).toMatchObject({ kind: 'hover', target: 'account', roleHint: 'link', region: 'nav' });
+  });
+});
+
+// ─── Scroll intents ─────────────────────────────────────────────
+
+describe('parseIntent — scroll intents', () => {
+  it('parses "scroll down"', () => {
+    const { intent } = parseIntent('scroll down');
+    expect(intent).toMatchObject({ kind: 'scroll', direction: 'down' });
+  });
+
+  it('parses "scroll up"', () => {
+    const { intent } = parseIntent('scroll up');
+    expect(intent).toMatchObject({ kind: 'scroll', direction: 'up' });
+  });
+
+  it('parses "scroll to top"', () => {
+    const { intent } = parseIntent('scroll to top');
+    expect(intent).toMatchObject({ kind: 'scroll', direction: 'top' });
+  });
+
+  it('parses "scroll to bottom"', () => {
+    const { intent } = parseIntent('scroll to bottom');
+    expect(intent).toMatchObject({ kind: 'scroll', direction: 'bottom' });
+  });
+
+  it('parses "scroll to the comments" as scroll-to-element', () => {
+    const { intent } = parseIntent('scroll to the comments');
+    expect(intent).toMatchObject({ kind: 'scroll', target: 'comments' });
+    expect(intent).not.toHaveProperty('direction');
+  });
+
+  it('parses bare "scroll" as scroll down', () => {
+    const { intent } = parseIntent('scroll');
+    expect(intent).toMatchObject({ kind: 'scroll', direction: 'down' });
+  });
+});
+
+// ─── Select intents ─────────────────────────────────────────────
+
+describe('parseIntent — select intents', () => {
+  it('parses "select USA from the country dropdown"', () => {
+    const { intent } = parseIntent('select USA from the country dropdown');
+    expect(intent).toMatchObject({ kind: 'select', value: 'USA', target: 'country', roleHint: 'combobox' });
+  });
+
+  it('parses "choose Texas in the state field"', () => {
+    const { intent } = parseIntent('choose Texas in the state field');
+    expect(intent).toMatchObject({ kind: 'select', value: 'Texas', target: 'state', roleHint: 'textbox' });
+  });
+
+  it('parses "pick 2 from the quantity dropdown"', () => {
+    const { intent } = parseIntent('pick 2 from the quantity dropdown');
+    expect(intent).toMatchObject({ kind: 'select', value: '2', target: 'quantity', roleHint: 'combobox' });
+  });
+
+  it('falls through to click when no "from/in" separator', () => {
+    const { intent } = parseIntent('select the submit button');
+    expect(intent).toMatchObject({ kind: 'click', target: 'submit', roleHint: 'button' });
+  });
+});

@@ -95,7 +95,7 @@ export async function semanticGroundIntent(intent: Intent, model: PageModel): Pr
   }
 
   // Embed the target once
-  const targetEmbed = await embed(intent.target);
+  const targetEmbed = await embed(intent.target ?? '');
 
   // Score each interactive node by semantic similarity
   const candidates: GroundCandidate[] = [];

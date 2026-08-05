@@ -39,7 +39,30 @@ export interface NavigateIntent {
   region?: string;
 }
 
-export type Intent = ClickIntent | TypeIntent | NavigateIntent;
+export interface HoverIntent {
+  kind: 'hover';
+  target: string;       // element to hover over, e.g. "menu"
+  roleHint?: string;
+  region?: string;
+}
+
+export interface ScrollIntent {
+  kind: 'scroll';
+  direction?: 'up' | 'down' | 'top' | 'bottom';  // directional scroll
+  target?: string;       // element to scroll into view (if not directional)
+  roleHint?: string;
+  region?: string;
+}
+
+export interface SelectIntent {
+  kind: 'select';
+  value: string;         // the option to select (value or label)
+  target: string;        // the dropdown element, e.g. "country"
+  roleHint?: string;
+  region?: string;
+}
+
+export type Intent = ClickIntent | TypeIntent | NavigateIntent | HoverIntent | ScrollIntent | SelectIntent;
 
 export interface ParseResult {
   intent: Intent | null;
@@ -51,6 +74,9 @@ export interface ParseResult {
 const CLICK_VERBS = ['click', 'press', 'select', 'tap', 'hit', 'choose'];
 const TYPE_VERBS = ['type', 'enter', 'fill', 'input', 'write'];
 const NAVIGATE_VERBS = ['go to', 'navigate to', 'open', 'visit', 'jump to'];
+const HOVER_VERBS = ['hover over', 'hover'];
+const SCROLL_DIRECTIONS = ['up', 'down', 'top', 'bottom'];
+const SELECT_VERBS = ['select', 'choose', 'pick'];
 
 // Words that describe element roles — stripped from the target but captured as hints.
 const ROLE_HINTS: Record<string, string> = {
@@ -128,11 +154,17 @@ function extractRegion(text: string): { region: string | undefined; remainder: s
 
 /** Extract a role hint from the tail of a phrase ("sign in button" → button). */
 function extractRoleHint(text: string): { roleHint: string | undefined; remainder: string } {
-  const words = text.toLowerCase().split(/\s+/);
+  const words = text.toLowerCase().split(/\s+/).filter((w) => w.length > 0);
   const lastWord = words[words.length - 1] ?? '';
   const roleHint = ROLE_HINTS[lastWord];
   if (roleHint) {
-    return { roleHint, remainder: words.slice(0, -1).join(' ').trim() };
+    const remainder = words.slice(0, -1).join(' ').trim();
+    // Don't strip the role hint if the remainder would be empty after
+    // removing articles — e.g. "the menu" shouldn't lose "menu" (which is
+    // both a role hint AND part of the target name).
+    if (stripArticles(remainder).length > 0) {
+      return { roleHint, remainder };
+    }
   }
   return { roleHint: undefined, remainder: text };
 }
@@ -210,6 +242,75 @@ export function parseIntent(goal: string): ParseResult {
     }
   }
 
+  // ── Hover intents ──
+  // "hover over the menu" / "hover the profile button"
+  for (const verb of HOVER_VERBS) {
+    if (lower.startsWith(verb + ' ')) {
+      const rest = raw.slice(verb.length).trim().replace(/^over\s+/i, '');
+      const { region, remainder } = extractRegion(rest);
+      const { roleHint, remainder: targetClean } = extractRoleHint(remainder);
+      const target = normalize(stripArticles(targetClean));
+      if (target) {
+        return { intent: { kind: 'hover', target, roleHint, region }, raw };
+      }
+    }
+  }
+
+  // ── Scroll intents ──
+  // "scroll down" / "scroll up" / "scroll to top" / "scroll to bottom"
+  // "scroll to the comments" / "scroll to e15" (scroll element into view)
+  if (lower === 'scroll' || lower.startsWith('scroll ')) {
+    const rest = lower === 'scroll' ? '' : lower.slice(7).trim();
+
+    // Directional: "scroll down", "scroll up", "scroll to top", "scroll to bottom"
+    const dirMatch = rest.match(/^(?:to\s+)?(up|down|top|bottom)$/i);
+    if (dirMatch) {
+      const dir = dirMatch[1].toLowerCase() as 'up' | 'down' | 'top' | 'bottom';
+      return { intent: { kind: 'scroll', direction: dir }, raw };
+    }
+
+    // Scroll to element: "scroll to the comments", "scroll to e15"
+    if (rest.startsWith('to ') || rest.startsWith('to the ') || rest.startsWith('to a ')) {
+      const targetPhrase = rest.replace(/^to\s+(?:the\s+|a\s+|an\s+)?/i, '');
+      const { region, remainder } = extractRegion(targetPhrase);
+      const { roleHint, remainder: targetClean } = extractRoleHint(remainder);
+      const target = normalize(stripArticles(targetClean));
+      if (target) {
+        return { intent: { kind: 'scroll', target, roleHint, region }, raw };
+      }
+    }
+
+    // Bare "scroll" with no direction/target — treat as scroll down
+    if (rest === '') {
+      return { intent: { kind: 'scroll', direction: 'down' }, raw };
+    }
+  }
+
+  // ── Select intents (dropdown) ──
+  // "select USA from the country dropdown"
+  // "choose Texas in the state field"
+  // Must check BEFORE click intents — 'select' and 'choose' are also click verbs.
+  // The distinguishing pattern: a "from/in <target>" separator separates the
+  // value from the dropdown. Without it, "select the button" is a click.
+  for (const verb of SELECT_VERBS) {
+    if (lower.startsWith(verb + ' ')) {
+      const rest = raw.slice(verb.length).trim();
+      // Match "<value> from <target>" or "<value> in <target>"
+      const selectMatch = rest.match(/^(.+?)\s+(?:from|in|inside|in the)\s+(.+)$/i);
+      if (selectMatch) {
+        const value = selectMatch[1].trim();
+        const { region, remainder } = extractRegion(selectMatch[2]);
+        const { roleHint, remainder: targetClean } = extractRoleHint(remainder);
+        const target = normalize(stripArticles(targetClean));
+        if (value && target) {
+          return { intent: { kind: 'select', value, target, roleHint, region }, raw };
+        }
+      }
+      // No "from/in" separator — fall through to click handler
+      // ("select the button" → click)
+    }
+  }
+
   // ── Click intents ──
   for (const verb of CLICK_VERBS) {
     if (lower.startsWith(verb + ' ')) {
@@ -243,5 +344,5 @@ export function parseIntent(goal: string): ParseResult {
 
 /** Strip leading articles from a phrase. */
 function stripArticles(s: string): string {
-  return s.replace(/^(?:the|a|an)\s+/i, '').trim();
+  return s.replace(/^(?:the|a|an)(?:\s+|$)/i, '').trim();
 }
