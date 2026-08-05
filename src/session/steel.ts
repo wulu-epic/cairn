@@ -92,6 +92,11 @@ export class SteelBackend implements BrowserBackend {
     }
   }
 
+  /** Delegates to isHealthy() — satisfies the BrowserBackend interface. */
+  async healthCheck(): Promise<boolean> {
+    return this.isHealthy();
+  }
+
   private get headers(): Record<string, string> {
     const h: Record<string, string> = { 'Content-Type': 'application/json' };
     if (this.config.steelApiKey) {

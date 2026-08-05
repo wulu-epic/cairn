@@ -79,6 +79,19 @@ export class SessionManager {
       }
     }
 
+    // Health-check before reuse: if we have a saved session (a previously
+    // launched Chrome), check that it's still alive. A dead detached Chrome
+    // (crashed, OOM-killed, manually closed) would otherwise cause an opaque
+    // failure on the next command. healthCheck() + connect() handle the
+    // relaunch transparently inside the backend.
+    const saved = this.loadState();
+    if (saved && this.backend.name === 'local') {
+      const alive = await this.backend.healthCheck();
+      if (!alive) {
+        process.stderr.write('[session] previous Chrome session is dead, will relaunch\n');
+      }
+    }
+
     const conn = await this.backend.connect();
     this.saveState({ backendType: conn.backendType });
     return conn;
