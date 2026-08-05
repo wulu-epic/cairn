@@ -65,12 +65,40 @@ function tokenize(s: string): string[] {
     .filter((t) => t.length > 0);
 }
 
+/**
+ * Levenshtein edit distance — typo tolerance for token matching.
+ * Catches "signin" ≈ "sign in", "submt" ≈ "submit", etc.
+ * Uses O(n) space (two-row DP) for efficiency.
+ */
+export function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const prev = new Array<number>(n + 1);
+  const curr = new Array<number>(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= n; j++) prev[j] = curr[j];
+  }
+  return prev[n];
+}
+
 /** The searchable text for a node: name + text, combined. */
 function nodeSearchText(node: EnhancedNode): string {
   return [node.name ?? '', node.text ?? ''].join(' ').trim();
 }
 
-/** Jaccard-like token overlap score: |intersection| / |union|. */
+/**
+ * Jaccard-like token overlap score with fuzzy (Levenshtein) matching.
+ * Exact token matches count fully; near-matches (edit distance ≤ 2, relative
+ * distance ≤ 0.3) count at reduced weight. Catches typos like "submt"≈"submit"
+ * and concatenated words like "signin"≈"sign in" (via cross-token check).
+ */
 function tokenOverlapScore(targetTokens: string[], nodeTokens: string[]): { score: number; matched: string[] } {
   if (targetTokens.length === 0 || nodeTokens.length === 0) return { score: 0, matched: [] };
   const targetSet = new Set(targetTokens);
@@ -84,7 +112,35 @@ function tokenOverlapScore(targetTokens: string[], nodeTokens: string[]): { scor
     }
   }
   const union = targetSet.size + nodeSet.size - intersection;
-  return { score: union > 0 ? intersection / union : 0, matched };
+  const exact = union > 0 ? intersection / union : 0;
+
+  // Fuzzy matching: for unmatched target tokens, try Levenshtein against node tokens.
+  // Only kicks in when exact overlap is low (otherwise exact matches dominate).
+  if (exact < 0.6) {
+    let fuzzyMatches = 0;
+    const matchedTargets = new Set(matched);
+    for (const t of targetSet) {
+      if (matchedTargets.has(t)) continue;
+      for (const n of nodeSet) {
+        if (matchedTargets.has(n)) continue;
+        const dist = levenshtein(t, n);
+        const relDist = dist / Math.max(t.length, n.length);
+        // Accept if edit distance ≤ 2 and relative distance ≤ 0.3
+        if (dist > 0 && dist <= 2 && relDist <= 0.3) {
+          fuzzyMatches++;
+          matched.push(`${t}≈${n}`);
+          break;
+        }
+      }
+    }
+    if (fuzzyMatches > 0) {
+      // Fuzzy matches count at 70% weight vs exact
+      const fuzzyScore = (fuzzyMatches * 0.7) / (targetSet.size + nodeSet.size - fuzzyMatches);
+      return { score: Math.max(exact, fuzzyScore), matched };
+    }
+  }
+
+  return { score: exact, matched };
 }
 
 /** Check if target appears as a substring of the node text (normalized). */
@@ -284,4 +340,53 @@ export function renderGroundResult(result: GroundResult): string {
     (c) => `  [${c.ref}] ${c.node.role}${c.node.name ? ` "${c.node.name}"` : ''} (score: ${c.score.toFixed(2)})`,
   );
   return `not found — closest candidates:\n${lines.join('\n')}`;
+}
+
+// ─── Embeddings fallback wrapper ───────────────────────────────
+
+/**
+ * Ground an Intent with a semantic (embeddings) fallback.
+ *
+ * 1. Try deterministic grounding (token overlap + substring + Levenshtein).
+ *    This is the fast path — no model download, no async I/O.
+ * 2. If deterministic returns 'match', return it immediately.
+ * 3. If deterministic returns 'notFound' or 'ambiguous', try semantic grounding
+ *    via embeddings (all-MiniLM-L6-v2). This catches synonyms like
+ *    "sign in"↔"log in" that token overlap misses entirely.
+ * 4. If embeddings are unavailable (package not installed / model download
+ *    fails), return the original deterministic result unchanged.
+ *
+ * The deterministic result is always the first thing tried, so the fast path
+ * is never broken. The fallback only costs an async call when deterministic
+ * grounding already failed — which is exactly when the agent would otherwise
+ * have to fall back to `look --visual`.
+ */
+export async function groundIntentWithFallback(intent: Intent, model: PageModel): Promise<GroundResult> {
+  const deterministic = groundIntent(intent, model);
+
+  // Fast path: deterministic match — return immediately, no embeddings
+  if (deterministic.status === 'match') return deterministic;
+
+  // Fallback path: deterministic failed — try semantic grounding
+  if (deterministic.status === 'notFound' || deterministic.status === 'ambiguous') {
+    try {
+      const { semanticGroundIntent } = await import('./embeddings.js');
+      const semantic = await semanticGroundIntent(intent, model);
+      if (semantic.status === 'match') return semantic;
+      // If semantic also failed, return whichever result has closer candidates
+      if (semantic.status === 'notFound' && deterministic.status === 'notFound') {
+        // Prefer the one with closer candidates (higher best score)
+        const detBest = deterministic.closest[0]?.score ?? 0;
+        const semBest = semantic.closest[0]?.score ?? 0;
+        return semBest > detBest ? semantic : deterministic;
+      }
+      return semantic;
+    } catch {
+      // Embeddings unavailable (package not installed / download failed) —
+      // return deterministic result. The agent can still use look --visual.
+      return deterministic;
+    }
+  }
+
+  return deterministic;
 }

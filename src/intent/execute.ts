@@ -25,7 +25,7 @@ import { clickByRef } from '../actions/click.js';
 import { typeByRef } from '../actions/type.js';
 import { waitForPageSettled, computeDelta, renderDelta, type DeltaResult } from '../model/delta.js';
 import { parseIntent, type Intent, type ClickIntent, type TypeIntent } from './parser.js';
-import { groundIntent, renderGroundResult, TYPEABLE_ROLES, type GroundResult } from './grounding.js';
+import { groundIntent, groundIntentWithFallback, renderGroundResult, TYPEABLE_ROLES, type GroundResult } from './grounding.js';
 
 export interface ExecuteResult {
   success: boolean;
@@ -119,7 +119,9 @@ export async function executeGoto(
   const currentModel = model ?? await buildPageModel(page);
 
   // 3. Ground the intent → find the target ref
-  const ground = groundIntent(intent, currentModel);
+  // Uses the embeddings fallback: deterministic grounding first (fast path),
+  // then semantic similarity for synonym matches ("sign in"↔"log in") if needed.
+  const ground = await groundIntentWithFallback(intent, currentModel);
 
   if (ground.status === 'notFound') {
     // click-to-reveal fallback (multi-step intent composition):

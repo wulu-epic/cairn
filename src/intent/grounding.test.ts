@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { groundIntent, renderGroundResult } from './grounding.js';
+import { describe, it, expect, vi } from 'vitest';
+import { groundIntent, groundIntentWithFallback, renderGroundResult, levenshtein } from './grounding.js';
 import type { Intent } from './parser.js';
 import { makeNode, makeModel } from '../test-utils.js';
 
@@ -168,5 +168,123 @@ describe('renderGroundResult', () => {
     expect(output).toContain('ambiguous');
     expect(output).toContain('[e1]');
     expect(output).toContain('[e2]');
+  });
+});
+
+// ─── Levenshtein distance ──────────────────────────────────────
+
+describe('levenshtein', () => {
+  it('returns 0 for identical strings', () => {
+    expect(levenshtein('hello', 'hello')).toBe(0);
+  });
+
+  it('returns the length of the other string when one is empty', () => {
+    expect(levenshtein('', 'hello')).toBe(5);
+    expect(levenshtein('hello', '')).toBe(5);
+  });
+
+  it('computes edit distance for typos', () => {
+    expect(levenshtein('submt', 'submit')).toBe(1); // missing 'i'
+    expect(levenshtein('signin', 'sign')).toBe(2);  // extra 'in'
+    expect(levenshtein('kitten', 'sitting')).toBe(3);
+  });
+});
+
+// ─── Fuzzy token matching (via groundIntent) ───────────────────
+
+describe('groundIntent — fuzzy (Levenshtein) token matching', () => {
+  it('matches a single-character typo in the target', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'button', name: 'Submit', interactive: true }),
+    ]);
+    // "submt" is edit-distance 1 from "submit" → fuzzy match should bring it above threshold
+    const result = groundIntent({ kind: 'click', target: 'submt' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('still does NOT match completely unrelated words', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'button', name: 'Submit', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'click', target: 'xyzabc' }, model);
+    expect(result.status).toBe('notFound');
+  });
+});
+
+// ─── groundIntentWithFallback (embeddings fallback) ────────────
+
+// Mock the embeddings module so tests don't need @huggingface/transformers installed.
+// The mock simulates semantic similarity for the "sign in"↔"log in" synonym case.
+vi.mock('../intent/embeddings.js', () => ({
+  semanticGroundIntent: vi.fn(async (intent: { target: string; kind: string }, model: { refIndex: Map<string, unknown> }) => {
+    // Simulate: "log in" semantically matches a "Sign In" button
+    if (intent.target === 'log in') {
+      const node = model.refIndex.get('e1');
+      if (node) {
+        return {
+          status: 'match',
+          ref: 'e1',
+          node,
+          score: 0.78,
+          reasons: ['semantic similarity: 78%'],
+        };
+      }
+    }
+    return { status: 'notFound', closest: [] };
+  }),
+}));
+
+describe('groundIntentWithFallback', () => {
+  it('returns deterministic match immediately (no embeddings call)', async () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'button', name: 'Sign In', interactive: true }),
+    ]);
+    const result = await groundIntentWithFallback({ kind: 'click', target: 'sign in' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('falls back to embeddings for synonym mismatch (log in ↔ sign in)', async () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'button', name: 'Sign In', interactive: true }),
+    ]);
+    // "log in" has zero token overlap with "sign in" → deterministic returns notFound.
+    // The embeddings fallback should catch the synonym.
+    const result = await groundIntentWithFallback({ kind: 'click', target: 'log in' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('returns deterministic result when embeddings also fail', async () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'button', name: 'Sign In', interactive: true }),
+    ]);
+    // "xyzabc" won't match deterministically or semantically → notFound
+    const result = await groundIntentWithFallback({ kind: 'click', target: 'xyzabc' }, model);
+    expect(result.status).toBe('notFound');
+  });
+
+  it('degrades gracefully when embeddings module is unavailable', async () => {
+    // Reset the mock to throw, simulating @huggingface/transformers not installed
+    const { semanticGroundIntent } = await import('./embeddings.js');
+    const mockFn = semanticGroundIntent as unknown as { mockImplementation: (fn: unknown) => void };
+    mockFn.mockImplementation(() => { throw new Error('module not found'); });
+
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'button', name: 'Sign In', interactive: true }),
+    ]);
+    const result = await groundIntentWithFallback({ kind: 'click', target: 'log in' }, model);
+    // Should return the deterministic notFound, not crash
+    expect(result.status).toBe('notFound');
+
+    // Restore the mock
+    mockFn.mockImplementation(async (intent: { target: string; kind: string }, mdl: { refIndex: Map<string, unknown> }) => {
+      if (intent.target === 'log in') {
+        const node = mdl.refIndex.get('e1');
+        if (node) return { status: 'match', ref: 'e1', node, score: 0.78, reasons: ['semantic similarity: 78%'] };
+      }
+      return { status: 'notFound', closest: [] };
+    });
   });
 });
