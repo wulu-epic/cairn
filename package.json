@@ -1,11 +1,11 @@
 {
-  "name": "ai-browser-tester",
+  "name": "cairn-browser",
   "version": "0.1.0",
-  "description": "An agent-first browser testing tool — optimized for LLM agents, not test scripts",
+  "description": "Cairn — an agent-first browser automation tool. Act by stable ref, never by coordinate.",
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
-    "abt": "dist/cli.js"
+    "cairn": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",

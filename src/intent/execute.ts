@@ -9,7 +9,7 @@
  * This is the "collapse the loop" function: one bash command per unit of
  * progress instead of 4-5. It's deterministic — no in-tool LLM call. When
  * grounding is ambiguous or fails, it returns the candidates and suggests
- * `abt look --visual` for visual disambiguation (the agent, which IS an LLM,
+ * `cairn look --visual` for visual disambiguation (the agent, which IS an LLM,
  * then resolves it).
  *
  * Multi-step intent composition: when a type intent (e.g. "type X into the
@@ -132,7 +132,7 @@ export async function executeGoto(
         if (revealed.ground.status === 'match') {
           // Found the field after clicking to reveal — but the dialog/overlay
           // may still be animating (CSS transitions) or the DOM may have been
-          // re-rendered (invalidating data-abt-ref attributes). Wait, re-build
+          // re-rendered (invalidating data-cairn-ref attributes). Wait, re-build
           // a fresh model, re-ground, and try to type.
           await page.waitForTimeout(800);
           const freshModel = await buildPageModel(page);
@@ -150,7 +150,7 @@ export async function executeGoto(
           }
 
           // Direct-locator fallback: if ref-based typing failed (the dialog's
-          // JS may have re-rendered and stripped data-abt-ref attributes), use
+          // JS may have re-rendered and stripped data-cairn-ref attributes), use
           // a Playwright locator to find the first visible input on the page.
           // This handles Wikipedia's search dialog which re-renders on open.
           if (!typed) {
@@ -197,10 +197,10 @@ export async function executeGoto(
         }
         // Clicked but typing still failed — report what happened
         const revealMsg = revealed.ground.status === 'notFound'
-          ? `auto-clicked [${revealed.clickedRef}] to open a dialog, but still couldn't find "${intent.target}" —\n${renderGroundResult(revealed.ground)}\n→ try "abt look --visual" to see the dialog contents.`
+          ? `auto-clicked [${revealed.clickedRef}] to open a dialog, but still couldn't find "${intent.target}" —\n${renderGroundResult(revealed.ground)}\n→ try "cairn look --visual" to see the dialog contents.`
           : revealed.ground.status === 'ambiguous'
-            ? `auto-clicked [${revealed.clickedRef}] to open a dialog, but found multiple matches for "${intent.target}" —\n${renderGroundResult(revealed.ground)}\n→ specify which one or run "abt look --visual".`
-            : `auto-clicked [${revealed.clickedRef}] to open a dialog, but couldn't type into the field. The dialog may use a custom input widget — try "abt look --visual" then "abt type <ref> <text>".`;
+            ? `auto-clicked [${revealed.clickedRef}] to open a dialog, but found multiple matches for "${intent.target}" —\n${renderGroundResult(revealed.ground)}\n→ specify which one or run "cairn look --visual".`
+            : `auto-clicked [${revealed.clickedRef}] to open a dialog, but couldn't type into the field. The dialog may use a custom input widget — try "cairn look --visual" then "cairn type <ref> <text>".`;
         return {
           success: false,
           message: revealMsg,
@@ -217,7 +217,7 @@ export async function executeGoto(
       : '';
     return {
       success: false,
-      message: `not found: no element matched "${intent.target}"${closestMsg}\n→ try "abt look --visual" for a marked screenshot to visually locate the element.`,
+      message: `not found: no element matched "${intent.target}"${closestMsg}\n→ try "cairn look --visual" for a marked screenshot to visually locate the element.`,
       intent,
       ground,
       newModel: currentModel,
@@ -227,7 +227,7 @@ export async function executeGoto(
   if (ground.status === 'ambiguous') {
     return {
       success: false,
-      message: `ambiguous: ${ground.candidates.length} elements match "${intent.target}" —\n${renderGroundResult(ground)}\n→ specify which one (e.g. "click the <unique name> button") or run "abt look --visual".`,
+      message: `ambiguous: ${ground.candidates.length} elements match "${intent.target}" —\n${renderGroundResult(ground)}\n→ specify which one (e.g. "click the <unique name> button") or run "cairn look --visual".`,
       intent,
       ground,
       newModel: currentModel,

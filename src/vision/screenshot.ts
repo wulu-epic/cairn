@@ -6,7 +6,7 @@
  * module captures a full-page screenshot with numbered boxes drawn over every
  * interactive element, each labeled with the SAME eN ref the structured model
  * uses. The agent looks at the image to disambiguate, then still acts by ref
- * (`abt click e15`) — never by coordinate. This is what eliminates location
+ * (`cairn click e15`) — never by coordinate. This is what eliminates location
  * hallucination: vision perceives, refs ground.
  *
  * DESIGN.md §4.4: "falls back to a marked screenshot only when the structured
@@ -20,7 +20,7 @@ import type { PageModel } from '../model/page-model.js';
 import { getInteractiveNodes } from '../model/page-model.js';
 
 const SESSION_DIR = '.sessions';
-const OVERLAY_ID = 'abt-vision-overlay';
+const OVERLAY_ID = 'cairn-vision-overlay';
 
 export interface LegendEntry {
   ref: string;
@@ -57,14 +57,14 @@ export async function captureMarkedScreenshot(
   const maxMarks = opts.maxMarks ?? 150;
 
   // Collect interactive nodes to mark. These use the SAME refs stamped as
-  // data-abt-ref during buildPageModel, so the overlay boxes line up with the
+  // data-cairn-ref during buildPageModel, so the overlay boxes line up with the
   // structured model the agent is already reasoning over.
   const interactive = getInteractiveNodes(model);
   const toMark = interactive.slice(0, maxMarks);
   const refs = toMark.map((n) => n.ref);
 
   // Inject the overlay: numbered boxes positioned over the LIVE element
-  // bounding boxes (queried via data-abt-ref). Reading live geometry — not
+  // bounding boxes (queried via data-cairn-ref). Reading live geometry — not
   // the model's stale rects — guarantees the boxes land on the right pixels.
   await page.evaluate(injectOverlay, refs);
 
@@ -123,7 +123,7 @@ export function renderLegend(legend: LegendEntry[]): string {
  */
 function injectOverlay(refs: string[]): void {
   // Remove any leftover overlay from a previous call.
-  document.getElementById('abt-vision-overlay')?.remove();
+  document.getElementById('cairn-vision-overlay')?.remove();
 
   const docW = Math.max(
     document.documentElement.scrollWidth,
@@ -135,7 +135,7 @@ function injectOverlay(refs: string[]): void {
   );
 
   const overlay = document.createElement('div');
-  overlay.id = 'abt-vision-overlay';
+  overlay.id = 'cairn-vision-overlay';
   overlay.style.cssText = [
     'position:absolute',
     'top:0',
@@ -150,7 +150,7 @@ function injectOverlay(refs: string[]): void {
   document.documentElement.appendChild(overlay);
 
   for (const ref of refs) {
-    const el = document.querySelector(`[data-abt-ref="${ref}"]`) as HTMLElement | null;
+    const el = document.querySelector(`[data-cairn-ref="${ref}"]`) as HTMLElement | null;
     if (!el) continue;
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) continue;

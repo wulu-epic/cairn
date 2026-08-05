@@ -12,7 +12,7 @@
  *   - { status: 'notFound', closest }             — nothing above threshold
  *
  * The agent then either acts on the ref (match) or disambiguates (ambiguous /
- * notFound), with a suggestion to run `abt look --visual` for visual grounding.
+ * notFound), with a suggestion to run `cairn look --visual` for visual grounding.
  */
 
 import type { PageModel, EnhancedNode } from '../model/page-model.js';

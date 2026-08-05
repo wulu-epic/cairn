@@ -18,7 +18,7 @@ export interface TypeResult {
 }
 
 export async function typeByRef(page: Page, ref: string, text: string): Promise<TypeResult> {
-  const locator = page.locator(`[data-abt-ref="${ref}"]`);
+  const locator = page.locator(`[data-cairn-ref="${ref}"]`);
 
   // The ref might point to a wrapper element (e.g. a <div role="combobox">)
   // that contains the actual <input>. Try the ref'd element first, then fall
@@ -63,7 +63,7 @@ export async function typeByRef(page: Page, ref: string, text: string): Promise<
     } catch {
       return {
         success: false,
-        message: `ref ${ref} not found or not visible. Run "abt look" to see current refs, or "abt look --visual" for a marked screenshot.`,
+        message: `ref ${ref} not found or not visible. Run "cairn look" to see current refs, or "cairn look --visual" for a marked screenshot.`,
         ref,
       };
     }

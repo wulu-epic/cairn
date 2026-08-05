@@ -30,7 +30,7 @@ export interface RenderOptions {
   focusedRegion?: string | null;
   maxDepth?: number;
   showAll?: boolean; // if true, show non-interactive nodes too (for debugging)
-  visualMode?: boolean; // if true, suppress the "run abt look --visual" hint (already in visual mode)
+  visualMode?: boolean; // if true, suppress the "run cairn look --visual" hint (already in visual mode)
   interactiveOnly?: boolean; // if true, show only interactive elements (compact, ~3x smaller)
 }
 
@@ -55,7 +55,7 @@ export function renderPage(model: PageModel, options: RenderOptions = {}): strin
     if (mr.shadowDomCount) parts.push(`${mr.shadowDomCount} shadow-dom`);
     const hint = options.visualMode
       ? 'see marked screenshot above for visual grounding'
-      : 'run "abt look --visual" for a marked screenshot';
+      : 'run "cairn look --visual" for a marked screenshot';
     lines.push(`⚠ media-rich page (${parts.join(', ')}) — structured model is blind to these; ${hint}`);
   }
 
@@ -101,7 +101,7 @@ export function renderPage(model: PageModel, options: RenderOptions = {}): strin
     }
 
     lines.push(`---`);
-    lines.push(`${interactive.length} interactive elements. Use "abt click <ref>" or "abt type <ref> <text>".`);
+    lines.push(`${interactive.length} interactive elements. Use "cairn click <ref>" or "cairn type <ref> <text>".`);
     return lines.join('\n');
   }
 
@@ -111,7 +111,7 @@ export function renderPage(model: PageModel, options: RenderOptions = {}): strin
     if (regionNode) {
       renderNode(regionNode, lines, 0, options);
     } else {
-      lines.push(`(region "${options.focusedRegion}" not found — use "abt look" to see all regions)`);
+      lines.push(`(region "${options.focusedRegion}" not found — use "cairn look" to see all regions)`);
     }
   } else {
     // Show all regions
@@ -139,7 +139,7 @@ export function renderPage(model: PageModel, options: RenderOptions = {}): strin
   // Footer: action hints
   const interactiveCount = countInteractive(model.tree);
   lines.push(`---`);
-  lines.push(`${interactiveCount} interactive elements. Use "abt click <ref>" or "abt type <ref> <text>".`);
+  lines.push(`${interactiveCount} interactive elements. Use "cairn click <ref>" or "cairn type <ref> <text>".`);
 
   return lines.join('\n');
 }

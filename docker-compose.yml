@@ -5,7 +5,7 @@
 #
 # Usage:
 #   docker compose up -d
-#   # Then: abt goto https://example.com --steel
+#   # Then: cairn goto https://example.com --steel
 #
 # Ports:
 #   3000 = REST API + UI (UI at http://localhost:3000/ui)

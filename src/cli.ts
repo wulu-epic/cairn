@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
 /**
- * ai-browser-tester — agent-first browser testing tool
+ * Cairn — agent-first browser automation tool
  *
  * An agent-optimized CLI for browser automation. The agent navigates pages
  * by stable ref (never coordinates), gets compact hierarchical output, and
  * benefits from a persistent session across commands.
  *
- * Usage: abt <command> [args] [--session <id>] [--steel] [--proxy <url>] ...
+ * Usage: cairn <command> [args] [--session <id>] [--steel] [--proxy <url>] ...
  */
 
 import { SessionManager } from './session/session.js';
@@ -63,9 +63,9 @@ const COMMANDS = ['focus', 'click', 'type', 'look', 'status', 'goto', 'extract',
 type Command = (typeof COMMANDS)[number];
 
 function printHelp(): void {
-  console.log(`ai-browser-tester — agent-first browser testing tool
+  console.log(`Cairn — agent-first browser automation tool
 
-Usage: abt <command> [args] [options]
+Usage: cairn <command> [args] [options]
 
 Commands:
   focus <region|ref>     Zoom into a region/subtree (token-efficient)
@@ -75,7 +75,7 @@ Commands:
                           -i shows only interactive elements (compact)
   status                 Show session state (URL, region, backend, session info)
   goto <url|"nl goal">   Navigate to URL or run an NL intent
-  extract <schema>       Structured data extraction (Phase 5)
+  extract <schema>       Structured data extraction (not yet implemented)
   release                Release the browser session (Steel: frees the browser;
                           local Chrome: clears session state)
 
@@ -148,7 +148,7 @@ async function main(): Promise<void> {
         console.log(`(${shot.markedCount} of ${shot.totalInteractive} interactive elements marked)`);
         console.log('legend (ref → element):');
         console.log(renderLegend(shot.legend));
-        console.log('View the image, then act by ref, e.g. "abt click e15" — never by coordinate.');
+        console.log('View the image, then act by ref, e.g. "cairn click e15" — never by coordinate.');
       } else {
         const output = renderPage(model, { focusedRegion: savedState?.focusedRegion, interactiveOnly });
         console.log(output);
@@ -182,11 +182,11 @@ async function main(): Promise<void> {
       // ("goto click the sign in button"). Join all args into one string.
       const goal = commandArgs.join(' ');
       if (!goal) {
-        console.error('Usage: abt goto <url|"nl goal">');
-        console.error('  URL:   abt goto https://example.com');
-        console.error('  Intent: abt goto "click the sign in button"');
-        console.error('          abt goto "type hello into the email field"');
-        console.error('          abt goto "go to settings"');
+        console.error('Usage: cairn goto <url|"nl goal">');
+        console.error('  URL:   cairn goto https://example.com');
+        console.error('  Intent: cairn goto "click the sign in button"');
+        console.error('          cairn goto "type hello into the email field"');
+        console.error('          cairn goto "go to settings"');
         process.exit(1);
       }
 
@@ -221,7 +221,7 @@ async function main(): Promise<void> {
     case 'focus': {
       const target = commandArgs[0];
       if (!target) {
-        console.error('Usage: abt focus <region>');
+        console.error('Usage: cairn focus <region>');
         process.exit(1);
       }
       session.saveState({ focusedRegion: target });
@@ -235,7 +235,7 @@ async function main(): Promise<void> {
     case 'click': {
       const ref = commandArgs[0];
       if (!ref) {
-        console.error('Usage: abt click <ref>');
+        console.error('Usage: cairn click <ref>');
         process.exit(1);
       }
       // Build model before click (for delta comparison) + stamp attributes
@@ -261,10 +261,10 @@ async function main(): Promise<void> {
       const ref = commandArgs[0];
       const text = commandArgs.slice(1).join(' ');
       if (!ref || !text) {
-        console.error('Usage: abt type <ref> <text>');
+        console.error('Usage: cairn type <ref> <text>');
         process.exit(1);
       }
-      // Stamp fresh data-abt-ref attributes before resolving
+      // Stamp fresh data-cairn-ref attributes before resolving
       await buildPageModel(page);
       const result = await typeByRef(page, ref, text);
       if (result.success) {
@@ -277,7 +277,7 @@ async function main(): Promise<void> {
     }
 
     case 'extract': {
-      console.error('[stub] extract — structured extraction is Phase 5');
+      console.error('[stub] extract — structured extraction is not yet implemented');
       process.exit(1);
     }
 

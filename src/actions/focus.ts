@@ -16,14 +16,14 @@ export interface FocusResult {
 }
 
 export async function focusByRef(page: Page, ref: string): Promise<FocusResult> {
-  const locator = page.locator(`[data-abt-ref="${ref}"]`);
+  const locator = page.locator(`[data-cairn-ref="${ref}"]`);
 
   try {
     await locator.waitFor({ state: 'visible', timeout: 5000 });
   } catch {
     return {
       success: false,
-      message: `ref ${ref} not found or not visible. Run "abt look" to see current refs, or "abt look --visual" for a marked screenshot.`,
+      message: `ref ${ref} not found or not visible. Run "cairn look" to see current refs, or "cairn look --visual" for a marked screenshot.`,
     };
   }
 

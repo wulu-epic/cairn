@@ -258,7 +258,7 @@ const buildModelScript = `
     }
 
     var ref = nextRef();
-    el.setAttribute('data-abt-ref', ref);
+    el.setAttribute('data-cairn-ref', ref);
     var role = getImplicitRole(el);
     var name = getAccessibleName(el);
     var rect = el.getBoundingClientRect();

@@ -1,7 +1,7 @@
 /**
  * Click Action — deterministic click by stable ref.
  *
- * Resolves ref → live element via data-abt-ref attribute → Playwright click.
+ * Resolves ref → live element via data-cairn-ref attribute → Playwright click.
  * The agent never outputs coordinates. Uses Playwright's auto-wait + retry.
  * Returns what changed (compact result, not a full page dump).
  */
@@ -19,16 +19,16 @@ export interface ActionResult {
 }
 
 export async function clickByRef(page: Page, ref: string): Promise<ActionResult> {
-  // Resolve ref → live element. The data-abt-ref attribute was stamped
+  // Resolve ref → live element. The data-cairn-ref attribute was stamped
   // during the last buildPageModel() call.
-  const locator = page.locator(`[data-abt-ref="${ref}"]`);
+  const locator = page.locator(`[data-cairn-ref="${ref}"]`);
 
   try {
     await locator.waitFor({ state: 'visible', timeout: 5000 });
   } catch {
     return {
       success: false,
-      message: `ref ${ref} not found or not visible. Run "abt look" to see current refs, or "abt look --visual" for a marked screenshot.`,
+      message: `ref ${ref} not found or not visible. Run "cairn look" to see current refs, or "cairn look --visual" for a marked screenshot.`,
       ref,
     };
   }
