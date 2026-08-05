@@ -38,17 +38,32 @@ interface InteractivitySignalsFlat {
   isEditable: boolean;
 }
 
+export interface MediaRich {
+  canvasCount: number;
+  webglCount: number;
+  shadowDomCount: number;
+}
+
 export interface PageModel {
   url: string;
   title: string;
   tree: EnhancedNode;
   refIndex: Map<string, EnhancedNode>; // ref → node for O(1) lookup
+  mediaRich: MediaRich;
   timestamp: number;
+}
+
+/** True if the page has canvas/WebGL/shadow-DOM that the structured model is blind to. */
+export function isMediaRich(m: MediaRich): boolean {
+  return m.canvasCount > 0 || m.webglCount > 0 || m.shadowDomCount > 0;
 }
 
 /** Build the page model from the current page state. */
 export async function buildPageModel(page: Page): Promise<PageModel> {
-  const tree = await page.evaluate(buildModelScript) as EnhancedNode;
+  const result = await page.evaluate(buildModelScript) as
+    { tree: EnhancedNode; mediaRich: MediaRich };
+
+  const tree = result.tree;
 
   // Build ref index for fast lookup
   const refIndex = new Map<string, EnhancedNode>();
@@ -59,6 +74,7 @@ export async function buildPageModel(page: Page): Promise<PageModel> {
     title: await page.title().catch(() => ''),
     tree,
     refIndex,
+    mediaRich: result.mediaRich,
     timestamp: Date.now(),
   };
 }
@@ -91,6 +107,22 @@ const buildModelScript = `
 
   var refCounter = 0;
   function nextRef() { return 'e' + (++refCounter); }
+
+  // Phase 2: media-rich detection counters (canvas/WebGL/shadow-DOM)
+  var canvasCount = 0;
+  var webglCount = 0;
+  var shadowDomCount = 0;
+
+  // Test whether a <canvas> has an active WebGL/WebGL2 context.
+  // getContext returns null (or throws) if a 2d context is already attached.
+  function hasWebGLContext(canvas) {
+    try {
+      var gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      return !!gl;
+    } catch (e) {
+      return false;
+    }
+  }
 
   function getImplicitRole(el) {
     var role = el.getAttribute('role');
@@ -208,6 +240,23 @@ const buildModelScript = `
     var cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden') return null;
 
+    // Phase 2: media-rich detection (canvas/WebGL/shadow-DOM).
+    // The structured model is blind to these, so we count them to trigger
+    // the vision fallback path. Counting happens before pruning so a canvas
+    // that gets pruned from the model still flags the page as media-rich.
+    if (tag === 'canvas') {
+      canvasCount++;
+      if (hasWebGLContext(el)) webglCount++;
+    }
+    if (el.shadowRoot !== null) {
+      shadowDomCount++; // open shadow root — directly observable
+    } else if (tag.indexOf('-') >= 0 || el.hasAttribute('is')) {
+      // Custom element (hyphenated tag) or customized built-in element.
+      // Most attach a closed shadow root, which is undetectable; flag as
+      // probable shadow-DOM host so the agent is warned.
+      shadowDomCount++;
+    }
+
     var ref = nextRef();
     el.setAttribute('data-abt-ref', ref);
     var role = getImplicitRole(el);
@@ -251,6 +300,14 @@ const buildModelScript = `
     };
   }
 
-  return walk(document.body);
+  var tree = walk(document.body);
+  return {
+    tree: tree,
+    mediaRich: {
+      canvasCount: canvasCount,
+      webglCount: webglCount,
+      shadowDomCount: shadowDomCount
+    }
+  };
 })()
 `;

@@ -13,6 +13,7 @@
  */
 
 import type { PageModel, EnhancedNode } from '../model/page-model.js';
+import { isMediaRich } from '../model/page-model.js';
 
 const REGION_ORDER = ['header', 'nav', 'main', 'sidebar', 'footer', 'modal', 'form'];
 const REGION_LABELS: Record<string, string> = {
@@ -29,6 +30,7 @@ export interface RenderOptions {
   focusedRegion?: string | null;
   maxDepth?: number;
   showAll?: boolean; // if true, show non-interactive nodes too (for debugging)
+  visualMode?: boolean; // if true, suppress the "run abt look --visual" hint (already in visual mode)
 }
 
 /** Render the full page model as a compact hierarchical tree. */
@@ -41,6 +43,20 @@ export function renderPage(model: PageModel, options: RenderOptions = {}): strin
     lines.push(`(region: ${REGION_LABELS[options.focusedRegion] ?? options.focusedRegion})`);
   }
   lines.push('---');
+
+  // Phase 2: warn the agent when the page is media-rich (canvas/WebGL/shadow-DOM).
+  // The structured model is blind to these; vision fallback disambiguates.
+  if (isMediaRich(model.mediaRich)) {
+    const mr = model.mediaRich;
+    const parts: string[] = [];
+    if (mr.canvasCount) parts.push(`${mr.canvasCount} canvas${mr.canvasCount > 1 ? 'es' : ''}`);
+    if (mr.webglCount) parts.push(`${mr.webglCount} webgl`);
+    if (mr.shadowDomCount) parts.push(`${mr.shadowDomCount} shadow-dom`);
+    const hint = options.visualMode
+      ? 'see marked screenshot above for visual grounding'
+      : 'run "abt look --visual" for a marked screenshot';
+    lines.push(`⚠ media-rich page (${parts.join(', ')}) — structured model is blind to these; ${hint}`);
+  }
 
   if (options.focusedRegion) {
     // Zoom into the focused region
