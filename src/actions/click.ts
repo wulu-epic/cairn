@@ -28,7 +28,7 @@ export async function clickByRef(page: Page, ref: string): Promise<ActionResult>
   } catch {
     return {
       success: false,
-      message: `ref ${ref} not found or not visible. Run "abt look" to see current refs.`,
+      message: `ref ${ref} not found or not visible. Run "abt look" to see current refs, or "abt look --visual" for a marked screenshot.`,
       ref,
     };
   }

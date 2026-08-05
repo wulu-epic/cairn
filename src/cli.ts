@@ -16,17 +16,21 @@ import { renderPage } from './render/renderer.js';
 import { clickByRef } from './actions/click.js';
 import { typeByRef } from './actions/type.js';
 import { waitForPageSettled, computeDelta, renderDelta } from './model/delta.js';
+import { captureMarkedScreenshot, renderLegend } from './vision/screenshot.js';
 
 // ─── Arg parsing ───────────────────────────────────────────────
 
 const rawArgs = process.argv.slice(2);
 
 let sessionId = 'default';
+let visualMode = false;
 const cmdArgs: string[] = [];
 for (let i = 0; i < rawArgs.length; i++) {
   if (rawArgs[i] === '--session' && i + 1 < rawArgs.length) {
     sessionId = rawArgs[i + 1];
     i++;
+  } else if (rawArgs[i] === '--visual') {
+    visualMode = true;
   } else {
     cmdArgs.push(rawArgs[i]);
   }
@@ -47,13 +51,15 @@ Commands:
   focus <region|ref>   Zoom into a region/subtree (token-efficient)
   click <ref>          Deterministic click by stable ref
   type <ref> <text>    Fill a field by ref
-  look                 Show current page tree (the "I'm confused" command)
+  look [--visual]       Show page tree; --visual adds a marked screenshot
   status               Show session state (URL, focused region, last delta)
   goto <url>           Navigate to a URL
-  extract <schema>     Structured data extraction (Phase 2)
+  extract <schema>     Structured data extraction (Phase 3)
 
 Options:
   --session <id>       Session ID (default: default)
+  --visual             Capture a marked screenshot (numbered boxes over
+                       interactive elements, labeled with the same refs)
   --help, -h           Show this help
 
 Design: act by stable ref, never by coordinate. Every output is self-describing.`);
@@ -92,8 +98,24 @@ async function main(): Promise<void> {
     case 'look': {
       // Build the spatial-semantic page model and render it hierarchically.
       const model = await buildPageModel(page);
-      const output = renderPage(model, { focusedRegion: savedState?.focusedRegion });
-      console.log(output);
+
+      if (visualMode) {
+        // Vision fallback: capture a marked screenshot (numbered boxes over
+        // every interactive element, labeled with the same refs) so the agent
+        // can visually disambiguate — especially on canvas/shadow-DOM pages
+        // where the structured model is blind. The agent still acts by ref.
+        const shot = await captureMarkedScreenshot(page, model, { sessionId });
+        console.log(renderPage(model, { focusedRegion: savedState?.focusedRegion, visualMode: true }));
+        console.log('---');
+        console.log(`marked screenshot: ${shot.path}`);
+        console.log(`(${shot.markedCount} of ${shot.totalInteractive} interactive elements marked)`);
+        console.log('legend (ref → element):');
+        console.log(renderLegend(shot.legend));
+        console.log('View the image, then act by ref, e.g. "abt click e15" — never by coordinate.');
+      } else {
+        const output = renderPage(model, { focusedRegion: savedState?.focusedRegion });
+        console.log(output);
+      }
       break;
     }
 
