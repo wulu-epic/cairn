@@ -31,6 +31,7 @@ import { resolveConfig, parseFlags } from './config.js';
 import { categorizeError, renderError, CairnError } from './errors.js';
 import { TaskRecorder, replayTask, listTasks, loadTask, deleteTask, renderTaskList, renderTaskDetails, getDataDir, getTasksDir } from './intent/recorder.js';
 import { selfHealByRef } from './intent/self-heal.js';
+import { compilePlan, executePlan, savePlan, loadPlan, listPlans, deletePlan, renderPlanList, renderPlanDetails, getPlansDir } from './intent/planner.js';
 
 /** Detect whether a string looks like a URL (vs an NL intent goal). */
 function isURL(s: string): boolean {
@@ -78,7 +79,7 @@ for (let i = 0; i < remainingArgs.length; i++) {
 const command = cmdArgs[0];
 const commandArgs = cmdArgs.slice(1);
 
-const COMMANDS = ['focus', 'click', 'type', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'tab', 'dialog', 'upload', 'download', 'cookies', 'storage', 'release', 'replay', 'tasks', 'task'] as const;
+const COMMANDS = ['focus', 'click', 'type', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'tab', 'dialog', 'upload', 'download', 'cookies', 'storage', 'release', 'replay', 'tasks', 'task', 'compile', 'run', 'plans', 'plan'] as const;
 type Command = (typeof COMMANDS)[number];
 
 function printHelp(): void {
@@ -125,7 +126,15 @@ Commands:
                            Self-heals stale refs automatically (Leap 3)
   tasks                   List all recorded tasks (stored in OS data dir)
   task <id>               Show recorded task details (steps, refs, fallbacks)
-  task delete <id>        Delete a recorded task
+   task delete <id>        Delete a recorded task
+   compile "<goal>"        Compile a compound NL goal into a multi-step plan
+                            and execute it deterministically (Leap 1).
+                            e.g. "type X into email, then click sign in"
+                            Saves the plan for zero-LLM replay with 'run'
+   run <plan-id>           Re-execute a saved plan deterministically (zero LLM)
+   plans                   List all saved plans (stored in OS data dir)
+   plan <id>               Show plan details (steps, invariants)
+   plan delete <id>        Delete a saved plan
 
 Options:
   --session <id>         Session ID (default: default)
@@ -764,6 +773,141 @@ async function main(): Promise<void> {
         process.exit(1);
       }
       console.log(renderTaskDetails(task));
+      break;
+    }
+
+    case 'compile': {
+      // ── NL-to-Plan Compilation (Leap 1) ──
+      // Compile a compound NL goal into a deterministic multi-step plan,
+      // execute it with zero in-tool LLM calls, and save it for replay.
+      const goal = commandArgs.join(' ');
+      if (!goal) {
+        console.error('Usage: cairn compile "<goal>"');
+        console.error('  e.g. cairn compile "type test@example.com into the email field, then click the sign in button"');
+        process.exit(1);
+      }
+
+      const plan = compilePlan(goal);
+      process.stderr.write(`compiled plan: ${plan.steps.length} step${plan.steps.length === 1 ? '' : 's'}\n`);
+      for (const step of plan.steps) {
+        const kind = step.intent ? step.intent.kind : 'unparseable';
+        process.stderr.write(`  ${step.stepIndex + 1}. [${kind}] ${step.goal}\n`);
+      }
+
+      const result = await executePlan(page, plan, {
+        useSelfHeal: true,
+        sessionId,
+        onStep: (step, stepResult) => {
+          const status = stepResult.success ? '✓' : '✗';
+          const healed = stepResult.healed ? ' [self-healed]' : '';
+          const ref = stepResult.groundedRef ? ` [${stepResult.groundedRef}]` : '';
+          process.stderr.write(`  ${status} step ${step.stepIndex + 1}: ${stepResult.message.slice(0, 80)}${healed}${ref}\n`);
+        },
+      });
+
+      // Save the plan (even if some steps failed — the agent can inspect + re-run)
+      const saved = savePlan(plan);
+      result.planId = saved.id;
+
+      if (result.success) {
+        console.log(`✓ ${result.message}`);
+        console.log(`  saved plan: ${saved.id} (${plan.steps.length} step${plan.steps.length === 1 ? '' : 's'})`);
+        console.log(`  replay with: cairn run ${saved.id}`);
+      } else {
+        console.error(`✗ ${result.message}`);
+        console.error(`  saved plan: ${saved.id} (for inspection — fix and re-run)`);
+        console.error(`  inspect with: cairn plan ${saved.id}`);
+      }
+      session.saveState({ currentUrl: page.url(), focusedRegion: null });
+      break;
+    }
+
+    case 'run': {
+      // ── Plan Replay (Leap 1) — deterministic re-execution ──
+      const planId = commandArgs[0];
+      if (!planId) {
+        console.error('Usage: cairn run <plan-id>');
+        console.error('  List saved plans: cairn plans');
+        process.exit(1);
+      }
+      const plan = loadPlan(planId);
+      if (!plan) {
+        console.error(`✗ plan not found: ${planId}`);
+        console.error('  List saved plans: cairn plans');
+        process.exit(1);
+      }
+
+      process.stderr.write(`re-running plan: ${planId} (${plan.steps.length} steps)...\n`);
+      const result = await executePlan(page, plan, {
+        useSelfHeal: true,
+        sessionId,
+        onStep: (step, stepResult) => {
+          const status = stepResult.success ? '✓' : '✗';
+          const healed = stepResult.healed ? ' [self-healed]' : '';
+          const ref = stepResult.groundedRef ? ` [${stepResult.groundedRef}]` : '';
+          process.stderr.write(`  ${status} step ${step.stepIndex + 1}: ${stepResult.message.slice(0, 80)}${healed}${ref}\n`);
+        },
+      });
+
+      if (result.success) {
+        console.log(`✓ ${result.message}`);
+        if (result.healsTriggered > 0) {
+          console.log(`  (${result.healsTriggered} self-heal${result.healsTriggered === 1 ? '' : 's'} triggered)`);
+        }
+      } else {
+        console.error(`✗ ${result.message}`);
+        process.exit(1);
+      }
+      session.saveState({ currentUrl: page.url(), focusedRegion: null });
+      break;
+    }
+
+    case 'plans': {
+      // ── List saved plans (Leap 1) ──
+      const plans = listPlans();
+      console.log(renderPlanList(plans));
+      if (plans.length > 0) {
+        console.log(`\nData dir: ${getPlansDir()}`);
+      }
+      break;
+    }
+
+    case 'plan': {
+      // ── Plan management: show details or delete ──
+      //   cairn plan <id>          — show plan details
+      //   cairn plan delete <id>   — delete a plan
+      const subcommand = commandArgs[0];
+      if (!subcommand) {
+        console.error('Usage: cairn plan <id> | cairn plan delete <id>');
+        console.error('  cairn plan <id>        — show plan details (steps, invariants)');
+        console.error('  cairn plan delete <id> — delete a saved plan');
+        process.exit(1);
+      }
+
+      if (subcommand === 'delete') {
+        const planId = commandArgs[1];
+        if (!planId) {
+          console.error('Usage: cairn plan delete <id>');
+          process.exit(1);
+        }
+        const deleted = deletePlan(planId);
+        if (deleted) {
+          console.log(`✓ deleted plan: ${planId}`);
+        } else {
+          console.error(`✗ plan not found: ${planId}`);
+          process.exit(1);
+        }
+        break;
+      }
+
+      // Show plan details
+      const plan = loadPlan(subcommand);
+      if (!plan) {
+        console.error(`✗ plan not found: ${subcommand}`);
+        console.error('  List plans: cairn plans');
+        process.exit(1);
+      }
+      console.log(renderPlanDetails(plan));
       break;
     }
 
