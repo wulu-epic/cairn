@@ -114,10 +114,12 @@ After every action: inject MutationObserver + IntersectionObserver via `Runtime.
 | Language | **TypeScript/Node** | Agent loop is LLM-latency-bound (2-5s/step) so language speed is irrelevant; TS aligns with Playwright/Stagehand/Playwright-MCP ecosystem |
 | Page rep | **`ariaSnapshot({mode:'ai'})`** as base, enhanced with inferred interactivity + geometry | Canonical token-efficient AI rep; 3-5x fewer tokens than JS DOM dumps |
 | Change detection | **MutationObserver + IntersectionObserver** → diff by ref → delta | browser-use's proven reactive pattern |
-| Browser infra | **Self-hosted Steel.dev** (open-source) to start; **Browserbase** at scale | Steel gives session mgmt + anti-detect + token optimization free; managed removes DevOps when it hurts |
+| Browser infra | **Self-hosted Steel Browser** (Apache-2.0, free) to start; **Browserbase** at scale | Steel Browser (`steel-dev/steel-browser`, 7.4k★, TypeScript) is fully open-source Apache-2.0 — self-hosting is free forever; only the managed cloud is paid. Gives session mgmt + anti-detect + token optimization. Managed (Browserbase) removes DevOps when it hurts |
 | Perf-critical (optional) | **Rust** only for a CDP-orchestrator/chrome-farm microservice | 5-10x footprint reduction; only if profiling proves the orchestrator is the bottleneck (it won't be — LLM latency dominates) |
 
-**One-line stack:** TypeScript + Playwright (connectOverCDP) + `ariaSnapshot({mode:'ai'})` + inferred-interactivity enhancement + MutationObserver/IntersectionObserver delta-diffing + self-hosted Steel.dev chrome farm, Rust reserved for an optional CDP-orchestrator microservice.
+**One-line stack:** TypeScript + Playwright (connectOverCDP) + `ariaSnapshot({mode:'ai'})` + inferred-interactivity enhancement + MutationObserver/IntersectionObserver delta-diffing + self-hosted Steel Browser chrome farm (Apache-2.0, free), Rust reserved for an optional CDP-orchestrator microservice.
+
+**Browser-infra alternatives (all free to self-host):** Steel Browser is the default — TypeScript-native, agent-oriented CDP API, Docker. If avoiding Steel: **Browserless** (13.6k★, OSS Docker image, Playwright/Puppeteer via `ws://`, but license is "free for non-commercial use" — caveat for a shippable product; BrowserQL/persistent-sessions are cloud-only); **Selenium Grid** (Apache-2.0, free, multi-language, but heavier and less AI-agent-oriented); **DIY Playwright + `chromium.launch()` in your own Docker pool** (fully free, you own the orchestration — what we do locally now). Per established finding: the agent loop is LLM-latency-bound, so the chrome farm is a *scale* concern, not a correctness one — local `chromium.launch()` is fine for MVP/dev.
 
 **Why not Python** (browser-use's stack)? Equally valid if you're Python-first, but TS keeps the whole stack (control + extraction + MCP) in one language and aligns with where the ecosystem (Playwright, Stagehand, Playwright-MCP) is investing. **Why not Rust for everything?** The agent loop is latency-bound on the LLM, so Rust's speed is wasted there; its value is footprint/throughput in the orchestrator layer only.
 
@@ -139,7 +141,7 @@ Like agent-browser, this ships as: a **CLI binary + a skill that injects usage i
 1. **MVP — structured model + ref-based actions.** Playwright+CDP, `ariaSnapshot` base + inferred interactivity, `focus`/`click`/`type`/`look`/`status` commands, persistent session, delta output. Self-hosted chrome-headless-shell in Docker. No vision yet. ✅ done.
 2. **Vision fallback.** Marked screenshot on demand; canvas/WebGL/shadow-DOM detection → vision path. ✅ done.
 3. **High-level `goto` intent.** Internal perceive→ground→act→verify loop with one cheap vision call max.
-4. **Steel.dev integration + anti-detect.** Self-hosted chrome farm, session mgmt, proxy rotation.
+4. **Steel Browser integration + anti-detect.** Self-hosted chrome farm (Apache-2.0, free — `steel-dev/steel-browser`), session mgmt, proxy rotation.
 5. **Skill packaging.** CLI + injected instructions; polish the agent-facing surface.
 6. **Scale path.** Browserbase for managed; optional Rust CDP-orchestrator if profiling demands.
 
