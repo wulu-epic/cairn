@@ -13,7 +13,8 @@
 import type { Browser, Page } from 'playwright';
 import * as fs from 'fs';
 import * as path from 'path';
-import { BrowserBackend, LocalChromeBackend, BrowserConnection } from './backend.js';
+import { LocalChromeBackend } from './backend.js';
+import type { BrowserBackend, BrowserConnection } from './backend.js';
 import { SteelBackend } from './steel.js';
 import type { AppConfig } from '../config.js';
 
@@ -31,7 +32,7 @@ export interface SessionState {
   backendType?: 'local' | 'steel';
 }
 
-export { BrowserConnection };
+export type { BrowserConnection };
 
 export class SessionManager {
   private sessionId: string;

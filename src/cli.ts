@@ -158,7 +158,18 @@ async function main(): Promise<void> {
 
     case 'status': {
       const state = session.loadState();
+      const backendName = connection.backendType === 'steel' ? 'Steel Browser' : 'local Chrome';
       console.log(`Session:    ${sessionId}`);
+      console.log(`Backend:    ${backendName}`);
+      if (connection.steelSessionId) {
+        console.log(`Steel ID:   ${connection.steelSessionId}`);
+      }
+      if (config.proxyUrl) {
+        console.log(`Proxy:      ${config.proxyUrl}`);
+      }
+      if (config.userAgent) {
+        console.log(`User-Agent: ${config.userAgent.slice(0, 60)}${config.userAgent.length > 60 ? '...' : ''}`);
+      }
       console.log(`URL:        ${page.url()}`);
       console.log(`Title:      ${await page.title().catch(() => 'N/A')}`);
       console.log(`Region:     ${state?.focusedRegion ?? 'none'}`);
