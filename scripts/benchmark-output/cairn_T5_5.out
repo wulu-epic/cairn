@@ -1,0 +1,22 @@
+page: https://the-internet.herokuapp.com/secure
+---
+generic [ref=e1]
+  generic [ref=e2]
+    generic [ref=e3]
+      generic "You logged into a secure area!" [ref=e4]
+        link "×" [ref=e5] (clickable)
+  generic [ref=e6]
+    link [ref=e7]
+      img "Fork me on GitHub" [ref=e8] (inferred clickable)
+    generic [ref=e9]
+      generic [ref=e10]
+        heading "Secure Area" [ref=e11]
+        heading "Welcome to the Secure Area. When you are done click logout …" [ref=e13]
+        link [ref=e14] (clickable)
+          generic "Logout" [ref=e15] (inferred clickable)
+  generic [ref=e16]
+    generic [ref=e17]
+      generic "Powered by" [ref=e19]
+        link "Elemental Selenium" [ref=e20] (clickable)
+---
+5 interactive elements. Use "cairn click <ref>" or "cairn type <ref> <text>".

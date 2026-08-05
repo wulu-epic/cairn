@@ -1,0 +1,19 @@
+navigated: https://the-internet.herokuapp.com/login
+title:     The Internet
+page: https://the-internet.herokuapp.com/login
+---
+▼ Form
+  form [ref=e13]
+    generic [ref=e14]
+      generic [ref=e15]
+        label "Username" [ref=e16] (clickable)
+        textbox "Username" [ref=e17] (clickable)
+    generic [ref=e18]
+      generic [ref=e19]
+        label "Password" [ref=e20] (clickable)
+        textbox "Password" [ref=e21] (clickable)
+    button [ref=e22] (clickable)
+      generic "Login" [ref=e23] (inferred clickable)
+
+---
+8 interactive elements. Use "cairn click <ref>" or "cairn type <ref> <text>".

@@ -1,0 +1,6 @@
+Session:    default
+Backend:    local Chrome
+URL:        https://www.iana.org/help/example-domains
+Title:      Example Domains
+Region:     none
+Connection: CDP (persistent)

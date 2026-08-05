@@ -1,5 +1,7 @@
 # Comparison: agent-browser vs Cairn
 
+> **See [BENCHMARK.md](BENCHMARK.md) for the full automated, objective comparison** — a 6-task suite run via `scripts/benchmark.sh` with per-command metrics (stdout bytes, stderr bytes, wall-clock ms, exit code) captured for both tools. Results: Cairn 100% task success rate (6/6) vs agent-browser 67% (4/6), 18% fewer commands, 33% less total output. The comparison below is a preliminary manual analysis on a single task (Wikipedia search), retained for historical context.
+
 Head-to-head comparison on the same task: **search Wikipedia for "artificial intelligence"** (navigate to https://www.wikipedia.org, find the search box, type into it, observe results).
 
 Both tools were run via bash CLI. Metrics captured on 2025-08-05.

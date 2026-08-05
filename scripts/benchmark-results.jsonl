@@ -1,0 +1,42 @@
+{"tool":"ab","task":"T1","step":"1","desc":"open example.com","exit":0,"ms":3473,"stdout_bytes":42,"stderr_bytes":33}
+{"tool":"ab","task":"T1","step":"2","desc":"snapshot -i","exit":0,"ms":754,"stdout_bytes":74,"stderr_bytes":0}
+{"tool":"ab","task":"T2","step":"1","desc":"open wikipedia.org","exit":0,"ms":1283,"stdout_bytes":43,"stderr_bytes":0}
+{"tool":"ab","task":"T2","step":"2","desc":"snapshot -i","exit":0,"ms":816,"stdout_bytes":4699,"stderr_bytes":0}
+{"tool":"ab","task":"T3","step":"1","desc":"open duckduckgo.com","exit":0,"ms":1526,"stdout_bytes":79,"stderr_bytes":0}
+{"tool":"ab","task":"T3","step":"2","desc":"find searchbox fill","exit":1,"ms":782,"stdout_bytes":0,"stderr_bytes":127}
+{"tool":"ab","task":"T3","step":"3","desc":"press Enter","exit":0,"ms":888,"stdout_bytes":9,"stderr_bytes":0}
+{"tool":"ab","task":"T3","step":"4","desc":"snapshot -i (results)","exit":0,"ms":887,"stdout_bytes":7863,"stderr_bytes":0}
+{"tool":"ab","task":"T4","step":"1","desc":"open wiki article","exit":0,"ms":1138,"stdout_bytes":72,"stderr_bytes":0}
+{"tool":"ab","task":"T4","step":"2","desc":"snapshot -i","exit":0,"ms":991,"stdout_bytes":19163,"stderr_bytes":0}
+{"tool":"ab","task":"T4","step":"3","desc":"find searchbox fill","exit":0,"ms":1028,"stdout_bytes":9,"stderr_bytes":0}
+{"tool":"ab","task":"T4","step":"4","desc":"press Enter","exit":0,"ms":771,"stdout_bytes":9,"stderr_bytes":0}
+{"tool":"ab","task":"T4","step":"5","desc":"snapshot -i (results)","exit":0,"ms":2357,"stdout_bytes":165039,"stderr_bytes":0}
+{"tool":"ab","task":"T5","step":"1","desc":"open login form","exit":0,"ms":2187,"stdout_bytes":60,"stderr_bytes":0}
+{"tool":"ab","task":"T5","step":"2","desc":"snapshot -i","exit":0,"ms":752,"stdout_bytes":534,"stderr_bytes":0}
+{"tool":"ab","task":"T5","step":"3","desc":"fill username (@e6)","exit":0,"ms":747,"stdout_bytes":9,"stderr_bytes":0}
+{"tool":"ab","task":"T5","step":"4","desc":"fill password (@e3)","exit":0,"ms":838,"stdout_bytes":9,"stderr_bytes":0}
+{"tool":"ab","task":"T5","step":"5","desc":"click login button","exit":0,"ms":784,"stdout_bytes":9,"stderr_bytes":0}
+{"tool":"ab","task":"T5","step":"6","desc":"snapshot -i (result)","exit":0,"ms":747,"stdout_bytes":556,"stderr_bytes":0}
+{"tool":"ab","task":"T6","step":"1","desc":"open example.com","exit":0,"ms":809,"stdout_bytes":42,"stderr_bytes":0}
+{"tool":"ab","task":"T6","step":"2","desc":"click Learn more","exit":0,"ms":1360,"stdout_bytes":9,"stderr_bytes":0}
+{"tool":"ab","task":"T6","step":"3","desc":"get url","exit":0,"ms":728,"stdout_bytes":42,"stderr_bytes":0}
+{"tool":"ab","task":"cleanup","step":"1","desc":"close","exit":0,"ms":1182,"stdout_bytes":19,"stderr_bytes":0}
+{"tool":"cairn","task":"T1","step":"1","desc":"goto example.com","exit":0,"ms":2897,"stdout_bytes":401,"stderr_bytes":0}
+{"tool":"cairn","task":"T2","step":"1","desc":"goto wikipedia.org","exit":0,"ms":3205,"stdout_bytes":13700,"stderr_bytes":0}
+{"tool":"cairn","task":"T2","step":"2","desc":"look -i","exit":0,"ms":2837,"stdout_bytes":5529,"stderr_bytes":0}
+{"tool":"cairn","task":"T3","step":"1","desc":"goto duckduckgo.com","exit":0,"ms":3666,"stdout_bytes":12393,"stderr_bytes":0}
+{"tool":"cairn","task":"T3","step":"2","desc":"type into search","exit":0,"ms":3573,"stdout_bytes":503,"stderr_bytes":0}
+{"tool":"cairn","task":"T3","step":"3","desc":"click search button","exit":0,"ms":4163,"stdout_bytes":64,"stderr_bytes":0}
+{"tool":"cairn","task":"T3","step":"4","desc":"look -i (results)","exit":0,"ms":3028,"stdout_bytes":14958,"stderr_bytes":0}
+{"tool":"cairn","task":"T4","step":"1","desc":"goto wiki article","exit":0,"ms":3390,"stdout_bytes":43604,"stderr_bytes":0}
+{"tool":"cairn","task":"T4","step":"2","desc":"type into search","exit":0,"ms":10897,"stdout_bytes":1153,"stderr_bytes":0}
+{"tool":"cairn","task":"T4","step":"3","desc":"look -i (results)","exit":0,"ms":3507,"stdout_bytes":38617,"stderr_bytes":0}
+{"tool":"cairn","task":"T5","step":"1","desc":"goto login form","exit":0,"ms":4171,"stdout_bytes":606,"stderr_bytes":0}
+{"tool":"cairn","task":"T5","step":"2","desc":"type username","exit":0,"ms":3228,"stdout_bytes":68,"stderr_bytes":0}
+{"tool":"cairn","task":"T5","step":"3","desc":"type password","exit":0,"ms":3162,"stdout_bytes":80,"stderr_bytes":0}
+{"tool":"cairn","task":"T5","step":"4","desc":"click login","exit":0,"ms":3988,"stdout_bytes":84,"stderr_bytes":0}
+{"tool":"cairn","task":"T5","step":"5","desc":"look (result)","exit":0,"ms":2785,"stdout_bytes":787,"stderr_bytes":0}
+{"tool":"cairn","task":"T6","step":"1","desc":"goto example.com","exit":0,"ms":2815,"stdout_bytes":401,"stderr_bytes":0}
+{"tool":"cairn","task":"T6","step":"2","desc":"click Learn more","exit":0,"ms":3889,"stdout_bytes":87,"stderr_bytes":0}
+{"tool":"cairn","task":"T6","step":"3","desc":"status","exit":0,"ms":2833,"stdout_bytes":173,"stderr_bytes":0}
+{"tool":"cairn","task":"cleanup","step":"1","desc":"release","exit":0,"ms":2765,"stdout_bytes":89,"stderr_bytes":0}

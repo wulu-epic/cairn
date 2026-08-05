@@ -1,0 +1,9 @@
+✓ typed "typescript" into [e32] input "Search with DuckDuckGo"
++ [e33] generic  (new)
+~ [e34] button "Clear search input" — name: "" → "Clear search input"; interactive: false → true
+~ [e35] generic  — interactive: true → false
++ [e37] generic  (new)
+~ [e38] listbox "suggestions" — name: "" → "suggestions"
+~ [e39] option "typescript" — name: "Search" → "typescript"; interactive: false → true
+~ [e40] generic  — name: "Search" → ""
+~ [e41] generic  — name: "Search" → ""

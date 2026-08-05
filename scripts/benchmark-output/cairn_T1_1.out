@@ -1,0 +1,12 @@
+navigated: https://example.com/
+title:     Example Domain
+page: https://example.com/
+---
+generic [ref=e1]
+  generic [ref=e2]
+    heading "Example Domain" [ref=e3]
+    paragraph "This domain is for use in documentation examples without ne…" [ref=e4]
+    paragraph [ref=e5]
+      link "Learn more" [ref=e6] (clickable)
+---
+1 interactive elements. Use "cairn click <ref>" or "cairn type <ref> <text>".

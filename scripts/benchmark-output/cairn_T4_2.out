@@ -1,0 +1,9 @@
+✓ auto-opened dialog via [e21], then typed "artificial intelligence" into input "Search Wikipedia" (via direct locator — dialog re-rendered)
+~ [e19] option "Artificial intelligence" — name: "Browser wars" → "Artificial intelligence"
+~ [e25] generic  — name: "Browser wars" → ""; text: "Browser wars" → ""
+~ [e26] generic "Artificial intelligence" — name: "" → "Artificial intelligence"; text: "" → "Artificial intelligence"
+~ [e27] generic  — name: "Competition between web browsing applications for share of worldwide usage" → ""; text: "Competition between web browsing applica" → ""
+~ [e28] generic "Intelligence of machines" — name: "Firefox" → "Intelligence of machines"; text: "" → "Intelligence of machines"
+~ [e29] option "Artificial intelligence in video games" — name: "" → "Artificial intelligence in video games"
+~ [e34] generic  — name: "Firefox" → ""; text: "Firefox" → ""
+~ [e36] generic "Artificial intelligence in video games" — name: "Web browser made by Mozilla" → "Artificial intelligence in video games"; text: "Web browser made by Mozilla" → "Artificial intelligence in video games"
