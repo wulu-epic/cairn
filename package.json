@@ -1,6 +1,6 @@
 {
   "name": "cairn-browser",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Cairn — an agent-first browser automation tool. Act by stable ref, never by coordinate.",
   "repository": {
     "type": "git",
@@ -25,7 +25,10 @@
   ],
   "agents": {
     "skills": [
-      { "name": "cairn", "path": "./skills/cairn" }
+      {
+        "name": "cairn",
+        "path": "./skills/cairn"
+      }
     ]
   },
   "dependencies": {
