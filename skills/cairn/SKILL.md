@@ -46,7 +46,13 @@ cairn focus <region|ref>      # Zoom into a region/subtree (token-efficient)
 
 # Actions (use refs from goto/look)
 cairn click <ref>             # Click by stable ref (deterministic, auto-wait)
-cairn type <ref> <text>       # Clear + type into a field by ref
+cairn type <ref> <text>       # Clear + type into a field by ref (echoes actual value)
+cairn attr <ref>              # Read one element's exact state: tag, role, name, text,
+                              #   value, classes, checked/disabled, aria-* — for confirming
+                              #   toggles, reading cart innerText, tracking button state
+cairn eval "<js>"             # Run read-only JS in the page — escape hatch for
+                              #   getComputedStyle, innerText, computed values not surfaced
+                              #   by the model or attr. Read-only by convention.
 cairn hover <ref>             # Hover (dropdowns, tooltips)
 cairn scroll <ref|dir>        # Scroll element into view, or page up/down/top/bottom
 cairn select <ref> <value>    # Select a dropdown option by ref
@@ -196,6 +202,11 @@ cairn release --session app2           # release app2 when done
 | Inferred interactivity (div-as-button) | ✅ | ❌ | ❌ |
 | Marked screenshot (same refs) | ✅ | ❌ | ✅ (annotate) |
 | Self-describing actions | ✅ | ❌ | ❌ |
+| Element state read (`attr`) | ✅ | ❌ | ✅ (get attr) |
+| Read-only JS (`eval`) | ✅ | ❌ | ✅ |
+| Click occlusion diagnostic | ✅ | ❌ | ❌ |
+| Input-value echo on type | ✅ | ❌ | ❌ |
+| Delta-text auto-detection | ✅ | ❌ | ❌ |
 
 ## When NOT to Use Cairn
 

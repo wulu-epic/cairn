@@ -174,3 +174,18 @@ All three intent kinds work end-to-end on the test login form:
 8. ~~Local embedding model (Xenova/all-MiniLM-L6-v2 via @huggingface/transformers) as a lazy fallback~~ ✅ **Done** — `intent/embeddings.ts`, lazy-loaded all-MiniLM-L6-v2, invoked only when deterministic grounding returns not-found/ambiguous
 9. ~~Open-shadow-DOM piercing + CSS-hidden content surfacing~~ ✅ **Done** — `page-model.ts` walk() now recurses into open shadow roots (stamping refs on shadow-DOM controls); `look --include-hidden` surfaces `display:none`/`aria-hidden` content. Closes HVAC bug-hunt gaps #6 and #5.
 10. ~~Task recording/replay + self-healing + NL-to-plan compilation (Leaps 1–3)~~ ✅ **Done** — `record`/`replay`/`tasks` (Leap 2), transparent stale-ref self-heal (Leap 3), `compile`/`run`/`plans` (Leap 1)
+
+### Capability fixes — closing the interaction-edge-case gaps (post-comparison)
+
+A follow-up field test (9-bug HVAC site + 7-bug espresso-cart site, 16 bugs total) compared Cairn vs agent-browser head-to-head. Result: **10/16 tie on recall, complementary profiles** — Cairn swept easy+hard (text reading, numeric/format logic, console-error diagnosis via `--trace`), agent-browser swept medium+near-impossible (precise DOM/interaction probing, hit-test errors). The 3 bugs only Cairn found were **observation** bugs; the 3 only agent-browser found were **interaction-edge-case** bugs. The six capability gaps below close the interaction-edge-case side while keeping Cairn's efficiency + console-tracing + text-reading lead. All six are now **Done**:
+
+| # | Gap | What it recovers | Status |
+|---|---|---|---|
+| 1 | `attr <ref>` — read one element's exact state (tag, role, name, text, value, classes, checked/disabled, aria-*) | M2 (filter-btn active class), N3 (cart innerText → Total $0) | ✅ Done |
+| 2 | Surface text nodes in page model (modal/form/cart regions) | M2, N3, H2/H3 (no longer need vision for dollar values) | ✅ Done |
+| 3 | Click occlusion diagnostic (elementFromPoint on click failure) | N2 (the near-impossible bug — agent-browser's "covered by `<header>`" message WAS the finding) | ✅ Done |
+| 4 | `eval "<js>"` — read-only JS escape hatch (getComputedStyle, innerText) | N3 (innerText path), M5 (computed-style backup) | ✅ Done |
+| 5 | Input-value echo on `type` (verify the field received the text) | Prevents the SUNNET10 self-inflicted FP (Bug 9 — typo went undetected) | ✅ Done |
+| 6 | Delta-text auto-detection (★-marked text changes in modal/form regions) | M2 class (automatic mis-wire/total detector — capability neither tool had) | ✅ Done |
+
+Gaps 1–3 get Cairn to **13/16** territory (everything except M4/H5/N1, which are genuinely untestable or undetectable). Gaps 4–5 tighten precision and kill the FP. Gap 6 is the stretch goal that pushes Cairn *ahead* — the delta now auto-flags cart-total text changes without vision, eval, or a11y tree.

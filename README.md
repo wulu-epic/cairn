@@ -2,7 +2,7 @@
 
 An agent-first browser testing tool — optimized for LLM agents, not test scripts.
 
-> **Status:** Phase 1 (MVP) + Phase 2 (vision fallback) + Phase 3 (NL goto intents) + Phase 4 (Steel Browser backend) + Phase 5 (skill packaging). The core loop works: navigate → look → click/type by stable ref → see compact deltas. Canvas/WebGL/shadow-DOM pages auto-suggest a marked screenshot (`cairn look --visual`). NL intents collapse the loop: `goto "click the sign in button"` runs perceive→ground→act→verify internally. Dialog-based search auto-resolves via click-to-reveal fallback. **Phase 4** adds a pluggable backend: drive a self-hosted [Steel Browser](https://github.com/steel-dev/steel-browser) chrome farm for session management, anti-detect (fingerprint injection), and per-session proxy rotation — or use the default local Chrome backend. **Phase 5** packages Cairn as an installable skill (`skills/cairn/SKILL.md` + agent usage instructions), modeled on the agent-browser skill format. **Capability hardening** (Tiers 1–2): 27 commands total — extended actions (`hover`/`scroll`/`select`/`keypress`/`drag`), tab/dialog/file-upload handling, structured `extract`, open-shadow-DOM piercing (refs stamped on shadow-root controls), `look --include-hidden` (surfaces `display:none`/`aria-hidden` content), `--trace` (captures failed XHRs/console errors/JS exceptions), a 9-code error taxonomy, and a lazy all-MiniLM-L6-v2 grounding-embeddings fallback for synonym matching. **Leaps 1–4**: task recording/replay with zero-LLM replay, transparent stale-ref self-healing, NL-to-plan compilation (`compile`/`run`/`plans`), and page model as query (`query` — targeted one-line answers instead of full tree dumps). 19 test files (unit + E2E + hvac-regression). See [DESIGN.md](docs/DESIGN.md) for the full design and [COMPARISON.md](docs/COMPARISON.md) for a head-to-head vs agent-browser.
+> **Status:** Phase 1 (MVP) + Phase 2 (vision fallback) + Phase 3 (NL goto intents) + Phase 4 (Steel Browser backend) + Phase 5 (skill packaging). The core loop works: navigate → look → click/type by stable ref → see compact deltas. Canvas/WebGL/shadow-DOM pages auto-suggest a marked screenshot (`cairn look --visual`). NL intents collapse the loop: `goto "click the sign in button"` runs perceive→ground→act→verify internally. Dialog-based search auto-resolves via click-to-reveal fallback. **Phase 4** adds a pluggable backend: drive a self-hosted [Steel Browser](https://github.com/steel-dev/steel-browser) chrome farm for session management, anti-detect (fingerprint injection), and per-session proxy rotation — or use the default local Chrome backend. **Phase 5** packages Cairn as an installable skill (`skills/cairn/SKILL.md` + agent usage instructions), modeled on the agent-browser skill format. **Capability hardening** (Tiers 1–2): 29 commands total — `attr`/`eval` (element state read + read-only JS escape hatch), click occlusion diagnostic, input-value echo, extended actions (`hover`/`scroll`/`select`/`keypress`/`drag`), tab/dialog/file-upload handling, structured `extract`, open-shadow-DOM piercing (refs stamped on shadow-root controls), `look --include-hidden` (surfaces `display:none`/`aria-hidden` content), `--trace` (captures failed XHRs/console errors/JS exceptions), a 9-code error taxonomy, and a lazy all-MiniLM-L6-v2 grounding-embeddings fallback for synonym matching. **Leaps 1–4**: task recording/replay with zero-LLM replay, transparent stale-ref self-healing, NL-to-plan compilation (`compile`/`run`/`plans`), and page model as query (`query` — targeted one-line answers instead of full tree dumps). 22 test files (249 unit tests + E2E + hvac-regression). See [DESIGN.md](docs/DESIGN.md) for the full design and [COMPARISON.md](docs/COMPARISON.md) for a head-to-head vs agent-browser.
 
 ## Installation
 
@@ -71,7 +71,13 @@ cairn focus <region|ref>   Zoom into a region (nav/main/sidebar/footer/modal)
 
 # Actions (by stable ref)
 cairn click <ref>          Click by stable ref (deterministic, no coordinates)
-cairn type <ref> <text>    Fill a field by ref
+cairn type <ref> <text>    Fill a field by ref (echoes the actual value received)
+cairn attr <ref>           Read one element's exact state: tag, role, name, text,
+                           value, classes, checked/disabled, aria-* — for confirming
+                           toggles, reading cart innerText, tracking button state
+cairn eval "<js>"          Run read-only JS in the page (getComputedStyle, innerText,
+                           computed values) — escape hatch for state not surfaced
+                           by the model or attr. Read-only by convention.
 cairn hover <ref>          Hover over an element (dropdowns, tooltips)
 cairn scroll <ref|dir>     Scroll element into view, or page up/down/top/bottom
 cairn select <ref> <value> Select a dropdown option by ref
@@ -157,7 +163,8 @@ src/
 │   ├── recorder.ts         Task recording/replay (TaskRecorder + replayTask) — Leap 2
 │   └── self-heal.ts        Transparent stale-ref self-healing (findReplacementByAttributes) — Leap 3
 ├── actions/
-│   ├── click.ts / type.ts / focus.ts   Core ref-based actions
+│   ├── click.ts / type.ts / focus.ts   Core ref-based actions (click + occlusion diagnostic, type + value-echo)
+│   ├── attr.ts / eval.ts               Element state read (attr) + read-only JS escape hatch (eval)
 │   ├── hover.ts / scroll.ts / select.ts / keypress.ts / drag.ts   Extended actions
 │   ├── tabs.ts / dialog.ts / files.ts  Tab / dialog / file-upload-download handling
 │   └── trace.ts            Non-DOM side-effect capture (--trace: failed XHRs, console errors)
@@ -200,6 +207,7 @@ npx tsx src/cli.ts goto https://example.com --steel
 - [x] **Leap 3**: Transparent self-healing — stale refs auto-replaced by attribute matching on replay
 - [x] **Leap 4**: Page model as query (`query "question"`) — targeted one-line answers (match/primary-action/form-fields/diff) instead of full page tree dumps, with model snapshot persistence for cross-invocation diffs
 - [x] **npm publish**: Published to npm as [`cairn-browser@0.1.0`](https://www.npmjs.com/package/cairn-browser) — `npm i -g cairn-browser` (see [Installation](#installation) above)
+- [x] **Capability fixes (COMPARISON.md gap analysis)**: `attr <ref>` (read one element's exact state — tag/role/name/text/value/classes/checked/disabled/aria-*), `eval "<js>"` (read-only JS escape hatch for getComputedStyle/innerText), click occlusion diagnostic (elementFromPoint on click failure reports the occluder), input-value echo on `type` (verify the field received the text, warn on mismatch), text-node surfacing in page model (modal/form/cart regions now show text in `look -i`), delta-text auto-detection (★-marked text changes in key regions — automatic mis-wire/total detector)
 - [ ] **Phase 6**: Scale path (`--json` output, MCP, session pool, Browserbase managed, PowerShell `iex` one-liner installer, optional Rust CDP orchestrator)
 
 See [DESIGN.md](docs/DESIGN.md) §7 for the full roadmap.
