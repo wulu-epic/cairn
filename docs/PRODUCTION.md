@@ -2,6 +2,14 @@
 
 > A grounded assessment of where Cairn is today, the specific gaps that separate it from production-grade, and a prioritized path to close them. Written from a direct read of the current code (Aug 2025). Companion to [DESIGN.md](DESIGN.md) (approach) and [COMPARISON.md](COMPARISON.md) (vs agent-browser).
 
+> **UPDATE (post-assessment):** Most of the Tier 1–2 gaps below are now **closed**. Status as of the latest pass:
+> - **Tier 1 (reliability):** ✅ Test suite — 17 test files (unit + E2E + hvac-regression, `npx vitest run`). ✅ Grounding embeddings fallback (`intent/embeddings.ts`, lazy all-MiniLM-L6-v2). ✅ Error taxonomy (`errors.ts`, 9 codes `E_NOT_FOUND`/`E_AMBIGUOUS`/`E_BROWSER_DEAD`/`E_REF_STALE`/… + `CairnError` + `renderError`). ⚠️ Crash recovery / CDP-reconnect on a dead persistent Chrome — still open.
+> - **Tier 2 (capability):** ✅ `extract` (structured JSON). ✅ Tabs + iframe support in the page model. ✅ Action set — `hover`/`scroll`/`select`/`keypress`/`drag`. ✅ Dialog + file upload/download + cookies/storage persistence. ✅ Open-shadow-DOM piercing (refs stamped on shadow-root controls) + `look --include-hidden` (surfaces `display:none`/`aria-hidden` content). These two close the [HVAC_BUGREPORT.md](HVAC_BUGREPORT.md) bugs #6 and #5 that the original hunt missed.
+> - **Beyond the tiers:** ✅ Task recording/replay (Leap 2) + transparent self-healing of stale refs (Leap 3) + NL-to-plan compilation `compile`/`run`/`plans` (Leap 1). ✅ `--trace` (non-DOM side-effect capture: failed XHRs, console errors, JS exceptions). ✅ Skill packaging (`skills/cairn/SKILL.md`, installable). ✅ `--include-hidden`, `--interactive-only`/`-i`, `--visual`.
+> - **Still open:** CDP reconnect + dead-browser relaunch; `--json` output mode; npm publish (`npm i -g cairn-browser`); MCP integration; network mocking; session pool/concurrency (Tier 4).
+>
+> The section below is the **original assessment**, retained for context; read it as the "before" picture against the update above.
+
 ---
 
 ## 1. Where we are — an honest read

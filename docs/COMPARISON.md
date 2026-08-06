@@ -70,9 +70,9 @@ The agent must re-snapshot after every action to see what changed. Refs are fres
 - **Winner: Cairn** — self-describing output reduces the need for follow-up "look" commands.
 
 ### 7. Feature maturity
-- **agent-browser**: Production-grade. Has screenshots, `--annotate` vision overlays, `find` semantic locators, tab management, network mocking, video recording, MCP integration, session restore, React introspection, accessibility audits, plugin system.
-- **Cairn**: MVP. Has goto, look, focus, click, type, status, delta. No vision, no screenshots, no semantic locators, no tabs, no network mocking, no MCP, no plugins.
-- **Winner: agent-browser** — far more feature-complete. Our tool is an MVP validating the core approach.
+- **agent-browser**: Production-grade (v0.33.0). Has screenshots, `--annotate` vision overlays, `find` semantic locators, tab management, network mocking, video recording, MCP integration, session restore, React introspection, accessibility audits, plugin system.
+- **Cairn**: Has `goto` (URL + NL intent), `look` (full / `-i` interactive-only / `--visual` marked screenshots / `--include-hidden`), `focus`, `click`, `type`, `hover`, `scroll`, `select`, `keypress`, `drag`, `extract` (structured JSON), tab management, dialog handling, file upload/download, cookies, storage persistence, `status`, `release`. NL `goto` intents with click-to-reveal fallback for dialog-based search. Task recording/replay (Leap 2) with transparent self-healing of stale refs (Leap 3). NL-to-plan compilation — `compile`/`run`/`plans` (Leap 1). Pluggable backend (self-hosted Steel Browser chrome farm or local Chrome) with auto-fallback. Open-shadow-DOM piercing + CSS-hidden content surfacing. `--trace` for non-DOM side-effect capture (failed XHRs, console errors). Packaged as an installable agent skill (`skills/cairn/SKILL.md`). 17 test files (unit + E2E + hvac regression). Still missing vs agent-browser: network mocking, video recording, MCP integration, React introspection.
+- **Winner: agent-browser** on raw breadth (network mocking, MCP, React introspection, video). **Cairn** has closed most of the capability gap and leads on agent-ergonomic features agent-browser lacks: NL intents, delta output, task recording/replay, self-healing, and plan compilation.
 
 ---
 
@@ -86,7 +86,13 @@ The agent must re-snapshot after every action to see what changed. Refs are fres
 | Region clustering | ❌ | ✅ (focus/zoom) |
 | Inferred interactivity | ❌ (AX tree only) | ✅ (cursor:pointer + onclick) |
 | Self-describing actions | ❌ ("✓ Done") | ✅ ("typed X into [e64]") |
-| Feature maturity | Production (v0.33.0) | MVP (v0.1.0) |
+| NL intent (`goto "goal"`) | ❌ | ✅ (perceive→ground→act→verify) |
+| Task record/replay + self-heal | ❌ | ✅ (Leap 2 + 3, zero-LLM replay) |
+| Plan compilation (`compile`/`run`) | ❌ | ✅ (Leap 1, compound NL → plan) |
+| Shadow-DOM piercing | ✅ (open roots) | ✅ (open roots, `--include-hidden`) |
+| Trace (failed XHRs/console errors) | ❌ | ✅ (`--trace`) |
+| Network mocking / MCP | ✅ | ❌ |
+| Feature maturity | Production (v0.33.0) | Beta (27 commands, 17 test files) |
 
 ### The core insight
 agent-browser is more mature and has a more token-efficient interactive-only snapshot. But our tool's key differentiators — **delta output** (don't re-snapshot after every action), **region focus** (zoom into relevant subtrees), **inferred interactivity** (catch div-as-button), and **self-describing actions** (know what happened without re-looking) — directly address the pain points the user identified: agents getting confused and taking too many steps to navigate.
@@ -162,7 +168,9 @@ All three intent kinds work end-to-end on the test login form:
 2. ~~Add NL `goto` intent (Phase 3)~~ ✅ **Done** — deterministic perceive→ground→act→verify in one command
 3. ~~Add an `--interactive-only` flag to `look` (match agent-browser's `-i` compactness)~~ ✅ **Done** — `cairn look -i` / `cairn look --interactive-only` shows a compact flat list of interactive elements grouped by region. Tested on wikipedia.org: 5525 bytes vs 13637 bytes full tree (2.5x more compact, approaching agent-browser's 4699-byte `-i`).
 4. ~~Multi-step intent composition: "type X into the search field" → auto-click search link → re-ground in dialog~~ ✅ **Done** — click-to-reveal fallback in execute.ts. When a type intent returns notFound, re-grounds as click intent, clicks matching link/button, waits for dialog, re-grounds + types. Direct-locator fallback handles DOM re-renders. Verified on en.wikipedia.org article pages.
-5. Add semantic locators (`find role button --name "Submit"`) as a complement to refs
-6. Package as a skill (like agent-browser ships)
-7. Add MCP integration
-8. Optional: local embedding model (Xenova/all-MiniLM-L6-v2 via @huggingface/transformers) as a lazy fallback for synonym matching when deterministic grounding returns not-found/ambiguous
+5. ~~Semantic locators (`find role button --name "Submit"`)~~ → **Superseded by NL `goto` intents**, which ground by meaning (fuzzy token overlap + embeddings) without requiring exact role/name syntax. A dedicated programmatic `find` is still a possible future addition.
+6. ~~Package as a skill (like agent-browser ships)~~ ✅ **Done** — `skills/cairn/SKILL.md` + reference docs, installable (Phase 5)
+7. Add MCP integration — still open
+8. ~~Local embedding model (Xenova/all-MiniLM-L6-v2 via @huggingface/transformers) as a lazy fallback~~ ✅ **Done** — `intent/embeddings.ts`, lazy-loaded all-MiniLM-L6-v2, invoked only when deterministic grounding returns not-found/ambiguous
+9. ~~Open-shadow-DOM piercing + CSS-hidden content surfacing~~ ✅ **Done** — `page-model.ts` walk() now recurses into open shadow roots (stamping refs on shadow-DOM controls); `look --include-hidden` surfaces `display:none`/`aria-hidden` content. Closes HVAC bug-hunt gaps #6 and #5.
+10. ~~Task recording/replay + self-healing + NL-to-plan compilation (Leaps 1–3)~~ ✅ **Done** — `record`/`replay`/`tasks` (Leap 2), transparent stale-ref self-heal (Leap 3), `compile`/`run`/`plans` (Leap 1)

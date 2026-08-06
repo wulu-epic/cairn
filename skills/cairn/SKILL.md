@@ -47,6 +47,20 @@ cairn focus <region|ref>      # Zoom into a region/subtree (token-efficient)
 # Actions (use refs from goto/look)
 cairn click <ref>             # Click by stable ref (deterministic, auto-wait)
 cairn type <ref> <text>       # Clear + type into a field by ref
+cairn hover <ref>             # Hover (dropdowns, tooltips)
+cairn scroll <ref|dir>        # Scroll element into view, or page up/down/top/bottom
+cairn select <ref> <value>    # Select a dropdown option by ref
+cairn keypress <key>          # Press a key (Enter, Escape, Control+a, …)
+cairn drag <ref1> <ref2>      # Drag element ref1 to element ref2
+cairn extract <schema>        # Structured data extraction (JSON output)
+
+# Tabs, dialogs, files, storage
+cairn tab <list|switch|close|new>      # Tab management
+cairn dialog <accept|dismiss> [text]  # Auto-handle JS dialogs (alert/confirm/prompt)
+cairn upload <ref> <path>     # Upload a file to an <input type=file> by ref
+cairn download <ref>          # Click a download link, save to .sessions/
+cairn cookies <list|clear>    # Cookie management
+cairn storage <save|restore> # Persist cookies + localStorage across sessions
 
 # Session
 cairn status                  # Session state (URL, region, backend, connection)
