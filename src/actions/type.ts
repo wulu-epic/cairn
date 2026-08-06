@@ -93,9 +93,36 @@ export async function typeByRef(page: Page, ref: string, text: string): Promise<
     }
   }
 
+  // Input-value echo (gap #5): after typing, read the field's actual value
+  // and echo it. If the typed text didn't "take" (mismatch), warn loudly.
+  // This kills an entire class of "I mistyped and invented a bug" false
+  // positives (e.g. the SUNNET10 self-inflicted FP in the comparison) —
+  // the agent immediately sees the field's real value, not what it THINKS
+  // it typed. agent-browser doesn't do this — a genuine edge.
+  const echo = await target.evaluate((el: HTMLElement, expected: string) => {
+    const tag = el.tagName.toLowerCase();
+    const inputEl = el as HTMLInputElement;
+    const actual = (tag === 'input' || tag === 'textarea')
+      ? inputEl.value
+      : (el.isContentEditable ? (el.textContent || '') : '');
+    if (actual === expected) {
+      return { match: true, actual };
+    }
+    return { match: false, actual };
+  }, text).catch(() => null);
+
+  let echoMsg = '';
+  if (echo) {
+    if (echo.match) {
+      echoMsg = ` (value: "${echo.actual}")`;
+    } else {
+      echoMsg = ` ⚠ value mismatch: expected "${text}" but field has "${echo.actual}" — the text may not have been entered correctly.`;
+    }
+  }
+
   return {
     success: true,
-    message: `typed "${text}" into [${ref}] ${info.tag}${info.name ? ` "${info.name}"` : ''}${usedChild ? ' (via child input)' : ''}`,
+    message: `typed "${text}" into [${ref}] ${info.tag}${info.name ? ` "${info.name}"` : ''}${usedChild ? ' (via child input)' : ''}${echoMsg}`,
     ref,
   };
 }
