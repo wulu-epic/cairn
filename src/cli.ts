@@ -15,6 +15,7 @@ import { buildPageModel } from './model/page-model.js';
 import { renderPage } from './render/renderer.js';
 import { clickByRef } from './actions/click.js';
 import { typeByRef } from './actions/type.js';
+import { attrByRef } from './actions/attr.js';
 import { hoverByRef } from './actions/hover.js';
 import { scrollByRef, scrollDirection, isScrollDirection } from './actions/scroll.js';
 import { selectByRef } from './actions/select.js';
@@ -88,7 +89,7 @@ for (let i = 0; i < remainingArgs.length; i++) {
 const command = cmdArgs[0];
 const commandArgs = cmdArgs.slice(1);
 
-const COMMANDS = ['focus', 'click', 'type', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'tab', 'dialog', 'upload', 'download', 'cookies', 'storage', 'release', 'replay', 'tasks', 'task', 'compile', 'run', 'plans', 'plan', 'query'] as const;
+const COMMANDS = ['focus', 'click', 'type', 'attr', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'tab', 'dialog', 'upload', 'download', 'cookies', 'storage', 'release', 'replay', 'tasks', 'task', 'compile', 'run', 'plans', 'plan', 'query', 'eval'] as const;
 type Command = (typeof COMMANDS)[number];
 
 function printHelp(): void {
@@ -100,6 +101,9 @@ Commands:
   focus <region|ref>     Zoom into a region/subtree (token-efficient)
   click <ref>            Deterministic click by stable ref
   type <ref> <text>      Fill a field by ref
+  attr <ref>             Read one element's exact state: tag, role, name,
+                           text, value, classes, checked/disabled, aria-* —
+                           for confirming toggles, reading cart innerText, etc.
   hover <ref>            Hover over an element (dropdowns, tooltips)
   scroll <ref|dir>       Scroll element into view, or page up/down/top/bottom
   select <ref> <value>   Select an option in a dropdown by ref
@@ -443,6 +447,26 @@ async function main(): Promise<void> {
         console.log(`✓ ${result.message}`);
       } else {
         console.error(renderError(new CairnError('E_TYPE_FAILED', result.message, 'The ref may be stale — run "cairn look" for fresh refs, then retry. Or use "cairn look --visual".')));
+        process.exit(1);
+      }
+      break;
+    }
+
+    case 'attr': {
+      const ref = commandArgs[0];
+      if (!ref) {
+        console.error('Usage: cairn attr <ref>');
+        console.error('  Reads one element\'s exact state: tag, role, name, text, value,');
+        console.error('  classes, checked/disabled, aria-* attributes, bbox.');
+        process.exit(1);
+      }
+      // Stamp fresh data-cairn-ref attributes before resolving
+      await buildPageModel(page);
+      const result = await attrByRef(page, ref);
+      if (result.success) {
+        console.log(result.message);
+      } else {
+        console.error(renderError(new CairnError('E_REF_STALE', result.message, 'Run "cairn look" for fresh refs, then retry.')));
         process.exit(1);
       }
       break;
