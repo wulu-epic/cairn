@@ -2,6 +2,10 @@
   "name": "cairn-browser",
   "version": "0.1.0",
   "description": "Cairn — an agent-first browser automation tool. Act by stable ref, never by coordinate.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wulu-epic/cairn"
+  },
   "type": "module",
   "main": "dist/cli.js",
   "bin": {
