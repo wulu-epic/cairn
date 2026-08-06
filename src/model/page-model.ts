@@ -246,7 +246,11 @@ function buildModelScript(opts: { includeHidden?: boolean }): string {
     return null;
   }
 
-  function walk(el, inShadow) {
+  // walk(el, inShadow, parentRegion): parentRegion is the inherited region
+  // so children of a <dialog>/<footer>/etc. are tagged with that region even
+  // if they have no explicit region of their own. This lets the renderer
+  // surface text nodes inside a cart/modal region (gap #2).
+  function walk(el, inShadow, parentRegion) {
     var tag = el.tagName.toLowerCase();
     if (SKIP_TAGS.indexOf(tag) >= 0) return null;
 
@@ -280,12 +284,13 @@ function buildModelScript(opts: { includeHidden?: boolean }): string {
     var name = getAccessibleName(el);
     var rect = el.getBoundingClientRect();
     var inter = computeInteractivity(el);
-    var region = getRegion(el);
+    var ownRegion = getRegion(el);
+    var region = ownRegion || parentRegion;
 
     var children = [];
     var frameInaccessible = false;
     for (var i = 0; i < el.children.length; i++) {
-      var childNode = walk(el.children[i], inShadow);
+      var childNode = walk(el.children[i], inShadow, region);
       if (childNode) children.push(childNode);
     }
 
@@ -294,7 +299,7 @@ function buildModelScript(opts: { includeHidden?: boolean }): string {
     // Closed roots (el.shadowRoot === null) are inaccessible and stay pruned.
     if (el.shadowRoot !== null) {
       for (var s = 0; s < el.shadowRoot.children.length; s++) {
-        var shadowChild = walk(el.shadowRoot.children[s], true);
+        var shadowChild = walk(el.shadowRoot.children[s], true, region);
         if (shadowChild) children.push(shadowChild);
       }
     }
@@ -309,7 +314,7 @@ function buildModelScript(opts: { includeHidden?: boolean }): string {
         if (iframeDoc && iframeDoc.body) {
           // Same-origin iframe — walk its body's children into our tree
           for (var j = 0; j < iframeDoc.body.children.length; j++) {
-            var frameChild = walk(iframeDoc.body.children[j], inShadow);
+            var frameChild = walk(iframeDoc.body.children[j], inShadow, region);
             if (frameChild) children.push(frameChild);
           }
         } else {
@@ -328,8 +333,15 @@ function buildModelScript(opts: { includeHidden?: boolean }): string {
       return null;
     }
 
+    // Capture direct text on ALL elements with direct text, not just leaves
+    // (gap #2). Previously text was only captured when children.length === 0,
+    // so a cart <div> containing <span>Total</span> + "$9.40" text node had
+    // no text field — the agent couldn't read totals from the tree and had
+    // to screenshot + vision-read dollar values. Now container text surfaces
+    // directly in the model, making attr, look, and deltas strictly more
+    // structured than agent-browser's raw a11y tree for these regions.
     var text = undefined;
-    if (children.length === 0 && directText) {
+    if (directText) {
       text = directText.slice(0, 200);
     }
 

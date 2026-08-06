@@ -100,8 +100,32 @@ export function renderPage(model: PageModel, options: RenderOptions = {}): strin
       }
     }
 
+    // Gap #2: also surface text-bearing non-interactive nodes in modal/form
+    // regions (e.g. a cart's "Subtotal $9.40 / Total $10.15"). These are
+    // invisible in pure interactive-only mode but critical for reading state
+    // (agent-browser beat Cairn on M2/N3 because it could read cart innerText).
+    // The agent now sees these refs and can `attr <ref>` for the full state.
+    const textRegions = ['modal', 'form'];
+    const textNodes: EnhancedNode[] = [];
+    function collectText(node: EnhancedNode) {
+      const inTextRegion = textRegions.includes(node.region ?? '');
+      if (!node.interactive && node.text && inTextRegion) {
+        textNodes.push(node);
+      }
+      for (const child of node.children) collectText(child);
+    }
+    collectText(model.tree);
+    if (textNodes.length > 0) {
+      lines.push('▼ Text (modal/form)');
+      for (const node of textNodes) {
+        lines.push(`  ${node.role} "${truncate(node.text ?? '', 60)}" [ref=${node.ref}]`);
+      }
+      lines.push('');
+    }
+
     lines.push(`---`);
-    lines.push(`${interactive.length} interactive elements. Use "cairn click <ref>" or "cairn type <ref> <text>".`);
+    const countLine = `${interactive.length} interactive element${interactive.length === 1 ? '' : 's'}${textNodes.length > 0 ? ` + ${textNodes.length} text node${textNodes.length === 1 ? '' : 's'}` : ''}. Use "cairn click <ref>" or "cairn type <ref> <text>". Use "cairn attr <ref>" to read any element's full state.`;
+    lines.push(countLine);
     return lines.join('\n');
   }
 
