@@ -1,26 +1,42 @@
-# Auto-publish to npm on every push to the default branch (master).
+# Auto-publish to npm on every push to master — NO manual version bump required.
 #
-# The workflow only actually publishes when package.json's version is NEW
-# (i.e. different from the version currently on the npm registry). If the
-# version is unchanged, the job skips the publish step — so pushing unrelated
-# changes won't fail with "you cannot publish over the previously published
-# version".
+# How it works:
+#   1. On push to master, compute the next version to publish:
+#        - If package.json's version is NEWER than npm's (you manually bumped
+#          minor/major, e.g. 0.1.x -> 0.2.0), publish that version as-is.
+#        - Otherwise, auto-increment the npm version's patch by 1
+#          (0.1.5 -> 0.1.6). npm is the source of truth, so this is race-safe
+#          even if the repo checkout is stale.
+#      So a plain `git push` always releases a new patch. No `npm version` step.
+#   2. Write the computed version into package.json (in the CI checkout),
+#      build, and `npm publish --provenance`.
+#   3. Push the version-bump commit back to master so the repo stays in sync.
+#      The push-back is authored by github-actions[bot] and carries `[skip ci]`
+#      so it does NOT re-trigger this workflow (loop-safe).
 #
-# ── One-time setup ─────────────────────────────────────────────────────────
+# Loop prevention (belt + suspenders):
+#   - The bot's bump commit message contains `[skip ci]`. GitHub Actions honors
+#     [skip ci] / [ci skip] / [no ci] / [skip actions] / [actions skip] for
+#     push-triggered workflows and skips the run. (Confirmed in GitHub Docs.)
+#   - The job also skips when github.actor == 'github-actions[bot]'.
+#   - Pushes made with the default GITHUB_TOKEN do not trigger on: push runs.
+#
+# ── One-time setup (DO THIS ONCE) ───────────────────────────────────────────
 # This workflow needs an npm access token to publish on your behalf.
 #
 # 1. Create an automation token at https://www.npmjs.com/settings/~/tokens
 #      (Classic Automation token, NOT a granular token — granular tokens
 #       can't publish via `npm publish` in CI reliably).
 # 2. Add it as a repository secret named NPM_TOKEN:
-#      GitHub repo → Settings → Secrets and variables → Actions →
-#        New repository secret → Name: NPM_TOKEN, Value: <paste token>
+#      GitHub repo -> Settings -> Secrets and variables -> Actions ->
+#        New repository secret -> Name: NPM_TOKEN, Value: <paste token>
 # 3. Make sure the token's owner owns the `cairn-browser` package on npm.
 #
-# ── How to release a new version ───────────────────────────────────────────
-# Bump the version in package.json (e.g. 0.1.0 → 0.2.0), commit, and push to
-# master. This workflow will build and publish automatically.
-#   npm version patch  # or minor / major, then: git push --follow-tags
+# ── How to release ───────────────────────────────────────────────────────────
+#   Just push to master. A new patch version is published automatically.
+#   To release a minor/major bump instead, set the version in package.json
+#   (e.g. "0.2.0") and push — that version is published as-is.
+#   To push WITHOUT releasing, include [skip ci] in your commit message.
 # ────────────────────────────────────────────────────────────────────────────
 
 name: Publish to npm
@@ -30,11 +46,9 @@ on:
     branches: [master]
   workflow_dispatch: {} # allow manual "Run workflow" from the Actions tab
 
-# npm provenance (the --provenance flag below) needs id-token: write.
-# If you remove --provenance, you can drop id-token: write too.
 permissions:
-  contents: read
-  id-token: write
+  contents: write # needed to push the version-bump commit back to master
+  id-token: write  # needed for npm --provenance
 
 # Queue pushes — never cancel a publish already in flight.
 concurrency:
@@ -43,10 +57,14 @@ concurrency:
 
 jobs:
   publish:
+    # Skip runs triggered by our own version-bump commits (loop prevention).
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true # leaves GITHUB_TOKEN configured for git push
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -58,29 +76,58 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check if version is new
-        id: version-check
+      - name: Compute next version
+        id: version
         run: |
-          set -e
-          LOCAL_VERSION=$(node -p "require('./package.json').version")
-          # `npm view` exits non-zero if the package was never published
-          PUBLISHED_VERSION=$(npm view cairn-browser version 2>/dev/null || echo "none")
-          echo "Local version:     $LOCAL_VERSION"
-          echo "Published version: $PUBLISHED_VERSION"
-          if [ "$LOCAL_VERSION" != "$PUBLISHED_VERSION" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "New version detected — will build & publish."
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Version unchanged — skipping publish."
-          fi
+          node -e '
+            const fs = require("fs");
+            const { execSync } = require("child_process");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            const local = pkg.version;
+            let published;
+            try {
+              published = execSync("npm view cairn-browser version", { encoding: "utf8" }).trim();
+            } catch {
+              published = null; // package never published yet
+            }
+            // semver greater-than on major.minor.patch
+            const gt = (a, b) => {
+              const p = a.split(".").map(Number);
+              const q = b.split(".").map(Number);
+              for (let i = 0; i < 3; i++) if (p[i] !== q[i]) return p[i] > q[i];
+              return false;
+            };
+            let next;
+            if (!published) next = local;                       // first-ever publish
+            else if (gt(local, published)) next = local;          // manual minor/major bump
+            else {                                               // auto patch bump
+              const [M, m, p] = published.split(".").map(Number);
+              next = M + "." + m + "." + (p + 1);
+            }
+            const bump = next !== local;
+            console.log("local=" + local + " published=" + (published || "(none)") + " next=" + next + " bump=" + bump);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "next=" + next + "\nbump=" + bump + "\n");
+            if (bump) {
+              pkg.version = next;
+              fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+            }
+          '
 
       - name: Build
-        if: steps.version-check.outputs.changed == 'true'
-        run: npm run build # tsc -p tsconfig.build.json → dist/
+        run: npm run build # tsc -p tsconfig.build.json -> dist/
 
       - name: Publish
-        if: steps.version-check.outputs.changed == 'true'
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Push version bump back to master
+        if: steps.version.outputs.bump == 'true'
+        continue-on-error: true # best-effort: the publish already succeeded
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore(release): v${{ steps.version.outputs.next }} [skip ci]"
+          git pull --rebase origin master
+          git push
