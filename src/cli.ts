@@ -16,6 +16,7 @@ import { renderPage } from './render/renderer.js';
 import { clickByRef } from './actions/click.js';
 import { typeByRef } from './actions/type.js';
 import { attrByRef } from './actions/attr.js';
+import { evalInPage } from './actions/eval.js';
 import { hoverByRef } from './actions/hover.js';
 import { scrollByRef, scrollDirection, isScrollDirection } from './actions/scroll.js';
 import { selectByRef } from './actions/select.js';
@@ -104,6 +105,9 @@ Commands:
   attr <ref>             Read one element's exact state: tag, role, name,
                            text, value, classes, checked/disabled, aria-* —
                            for confirming toggles, reading cart innerText, etc.
+  eval "<js>"             Run read-only JS in the page — escape hatch for
+                           getComputedStyle, innerText, computed values not
+                           surfaced by the model or attr. Read-only by convention.
   hover <ref>            Hover over an element (dropdowns, tooltips)
   scroll <ref|dir>       Scroll element into view, or page up/down/top/bottom
   select <ref> <value>   Select an option in a dropdown by ref
@@ -467,6 +471,28 @@ async function main(): Promise<void> {
         console.log(result.message);
       } else {
         console.error(renderError(new CairnError('E_REF_STALE', result.message, 'Run "cairn look" for fresh refs, then retry.')));
+        process.exit(1);
+      }
+      break;
+    }
+
+    case 'eval': {
+      const js = commandArgs.join(' ');
+      if (!js) {
+        console.error('Usage: cairn eval "<js>"');
+        console.error('  Runs read-only JS in the page context. Results are');
+        console.error('  serialized (JSON for objects, string for primitives).');
+        console.error('  e.g. eval "document.title"');
+        console.error('       eval "getComputedStyle(document.body).backgroundColor"');
+        console.error('       eval "document.querySelector(\'.cart\').innerText"');
+        process.exit(1);
+      }
+      const result = await evalInPage(page, js);
+      if (result.success) {
+        console.log(result.message);
+        if (result.type) console.error(`  (type: ${result.type})`);
+      } else {
+        console.error(renderError(new CairnError('E_UNKNOWN', result.message, 'Check the JS syntax. Use a bare expression (document.title) or a return statement (return document.title).')));
         process.exit(1);
       }
       break;
