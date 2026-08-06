@@ -32,6 +32,7 @@ import { categorizeError, renderError, CairnError } from './errors.js';
 import { TaskRecorder, replayTask, listTasks, loadTask, deleteTask, renderTaskList, renderTaskDetails, getDataDir, getTasksDir } from './intent/recorder.js';
 import { selfHealByRef } from './intent/self-heal.js';
 import { compilePlan, executePlan, savePlan, loadPlan, listPlans, deletePlan, renderPlanList, renderPlanDetails, getPlansDir } from './intent/planner.js';
+import { TraceCollector, decodeTrace } from './actions/trace.js';
 
 /** Detect whether a string looks like a URL (vs an NL intent goal). */
 function isURL(s: string): boolean {
@@ -57,6 +58,7 @@ let visualMode = false;
 let interactiveOnly = false;
 let includeHidden = false;
 let recordName: string | null = null;  // --record <name>: enable task recording
+let traceMode = false;                 // --trace: capture non-DOM side effects
 const cmdArgs: string[] = [];
 for (let i = 0; i < remainingArgs.length; i++) {
   if (remainingArgs[i] === '--session' && i + 1 < remainingArgs.length) {
@@ -68,6 +70,8 @@ for (let i = 0; i < remainingArgs.length; i++) {
     interactiveOnly = true;
   } else if (remainingArgs[i] === '--include-hidden') {
     includeHidden = true;
+  } else if (remainingArgs[i] === '--trace') {
+    traceMode = true;
   } else if (remainingArgs[i] === '--record' && i + 1 < remainingArgs.length) {
     recordName = remainingArgs[i + 1];
     i++;
@@ -151,6 +155,9 @@ Options:
   --include-hidden       Surface CSS-hidden / aria-hidden content (disclaimers,
                            deceptive patterns the a11y tree normally excludes)
   --record <name>        Record an NL goto intent as a replayable task (Leap 2)
+  --trace                Capture non-DOM side effects (failed XHRs, console
+                           errors, JS exceptions) during the action — answers
+                           "I clicked and nothing happened, why?"
   --help, -h             Show this help
 
 Environment variables:
@@ -265,7 +272,12 @@ async function main(): Promise<void> {
 
       if (isURL(goal)) {
         // ── URL navigation (existing behavior) ──
+        // --trace captures the page-load side effects (failed CDN requests,
+        // console errors, JS exceptions) — useful when a page loads blank.
+        const tc = traceMode ? new TraceCollector(page) : null;
+        tc?.start();
         await page.goto(goal, { waitUntil: 'domcontentloaded' });
+        const traceDigest = tc ? decodeTrace(tc.stop(), tc.durationMs) : null;
         const title = await page.title().catch(() => 'N/A');
         session.saveState({ currentUrl: page.url(), focusedRegion: null });
         // Show the page immediately after navigation (self-describing)
@@ -274,21 +286,27 @@ async function main(): Promise<void> {
         console.log(`navigated: ${page.url()}`);
         console.log(`title:     ${title}`);
         console.log(output);
+        if (traceDigest) console.log(traceDigest);
       } else {
         // ── NL intent: perceive → ground → act → verify (Phase 3) ──
         // The tool runs the full loop internally using deterministic logic,
         // collapsing 4-5 agent round-trips into one command.
         // Self-heal (Leap 3) is on by default — stale refs are re-grounded
         // transparently. Recording (Leap 2) is enabled with --record <name>.
+        // --trace captures non-DOM side effects (failed XHRs, console errors,
+        // JS exceptions) during the action — answers "nothing happened, why?"
         let recorder: TaskRecorder | undefined;
         if (recordName) {
           recorder = new TaskRecorder(recordName, page.url());
         }
+        const tc = traceMode ? new TraceCollector(page) : null;
+        tc?.start();
         const result = await executeGoto(page, goal, undefined, {
           useSelfHeal: true,
           recorder,
           sessionId,
         });
+        const traceDigest = tc ? decodeTrace(tc.stop(), tc.durationMs) : null;
         if (result.success) {
           // If self-heal triggered, surface it transparently
           if (result.healed) {
@@ -308,7 +326,11 @@ async function main(): Promise<void> {
             console.log(`  recorded task: ${saved.id} (${recorder.stepCount} step${recorder.stepCount === 1 ? '' : 's'})`);
             console.log(`  replay with: cairn replay ${saved.id}`);
           }
+          if (traceDigest) console.log(traceDigest);
         } else {
+          // Show the trace digest BEFORE the error — the side effects may
+          // explain the failure (e.g. a 500 on the submit endpoint).
+          if (traceDigest) console.log(traceDigest);
           // Categorize the failure into an agent-actionable error code.
           // The agent reads E_NOT_FOUND / E_AMBIGUOUS to decide the next step.
           // If self-heal was attempted but failed, show the heal log.
@@ -352,6 +374,10 @@ async function main(): Promise<void> {
       }
       // Build model before click (for delta comparison) + stamp attributes
       const prevModel = await buildPageModel(page);
+      // --trace: capture non-DOM side effects (failed XHRs, console errors,
+      // JS exceptions) during the click + settle window.
+      const tc = traceMode ? new TraceCollector(page) : null;
+      tc?.start();
       const result = await clickByRef(page, ref);
       if (result.success) {
         console.log(`✓ ${result.message}`);
@@ -362,6 +388,7 @@ async function main(): Promise<void> {
         if (delta.nodes.length > 0 || delta.urlChanged) {
           console.log(renderDelta(delta));
         }
+        if (tc) console.log(decodeTrace(tc.stop(), tc.durationMs));
       } else {
         // ── Self-heal (Leap 3): try to find a matching element by role+name ──
         const heal = await selfHealByRef(page, ref, prevModel);
@@ -376,9 +403,11 @@ async function main(): Promise<void> {
             if (delta.nodes.length > 0 || delta.urlChanged) {
               console.log(renderDelta(delta));
             }
+            if (tc) console.log(decodeTrace(tc.stop(), tc.durationMs));
             break;
           }
         }
+        if (tc) console.log(decodeTrace(tc.stop(), tc.durationMs));
         console.error(renderError(new CairnError('E_CLICK_FAILED', result.message, 'The ref may be stale — run "cairn look" for fresh refs, then retry. Or use "cairn look --visual".')));
         process.exit(1);
       }

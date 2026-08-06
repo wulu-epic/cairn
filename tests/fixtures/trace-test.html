@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Trace Test Fixture</title>
+</head>
+<body>
+  <h1>Trace Test Page</h1>
+  <p>This page has a button that fires a failing XHR + a console warning + a JS error.</p>
+
+  <button id="submit-btn" aria-label="Submit form">Submit</button>
+  <button id="ok-btn" aria-label="OK button">OK</button>
+
+  <div id="result"></div>
+
+  <script>
+    // Emit a console warning on load (should appear in trace if --trace is on goto)
+    console.warn('Page loaded —submitButton.onclick is deprecated');
+
+    document.getElementById('submit-btn').addEventListener('click', async () => {
+      // Fire a fetch that will 404 (no backend) — simulates "I clicked and nothing happened"
+      try {
+        const resp = await fetch('/api/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: 'test' }),
+        });
+        document.getElementById('result').textContent = 'Submitted: ' + resp.status;
+      } catch (e) {
+        console.error('Submit failed: ' + e.message);
+      }
+    });
+
+    document.getElementById('ok-btn').addEventListener('click', () => {
+      // This one succeeds (no network, just DOM change)
+      document.getElementById('result').textContent = 'OK clicked!';
+      console.log('OK button clicked');
+    });
+  </script>
+</body>
+</html>
