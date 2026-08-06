@@ -32,6 +32,7 @@ import { categorizeError, renderError, CairnError } from './errors.js';
 import { TaskRecorder, replayTask, listTasks, loadTask, deleteTask, renderTaskList, renderTaskDetails, getDataDir, getTasksDir } from './intent/recorder.js';
 import { selfHealByRef } from './intent/self-heal.js';
 import { compilePlan, executePlan, savePlan, loadPlan, listPlans, deletePlan, renderPlanList, renderPlanDetails, getPlansDir } from './intent/planner.js';
+import { parseQueryType, queryMatch, queryPrimaryAction, queryFormFields, queryDiff, saveModelSnapshot, renderQueryResult } from './intent/query.js';
 import { TraceCollector, decodeTrace } from './actions/trace.js';
 
 /** Detect whether a string looks like a URL (vs an NL intent goal). */
@@ -59,6 +60,7 @@ let interactiveOnly = false;
 let includeHidden = false;
 let recordName: string | null = null;  // --record <name>: enable task recording
 let traceMode = false;                 // --trace: capture non-DOM side effects
+let queryRegion: string | null = null; // --region <r>: scope a query to a region
 const cmdArgs: string[] = [];
 for (let i = 0; i < remainingArgs.length; i++) {
   if (remainingArgs[i] === '--session' && i + 1 < remainingArgs.length) {
@@ -75,6 +77,9 @@ for (let i = 0; i < remainingArgs.length; i++) {
   } else if (remainingArgs[i] === '--record' && i + 1 < remainingArgs.length) {
     recordName = remainingArgs[i + 1];
     i++;
+  } else if (remainingArgs[i] === '--region' && i + 1 < remainingArgs.length) {
+    queryRegion = remainingArgs[i + 1];
+    i++;
   } else {
     cmdArgs.push(remainingArgs[i]);
   }
@@ -83,7 +88,7 @@ for (let i = 0; i < remainingArgs.length; i++) {
 const command = cmdArgs[0];
 const commandArgs = cmdArgs.slice(1);
 
-const COMMANDS = ['focus', 'click', 'type', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'tab', 'dialog', 'upload', 'download', 'cookies', 'storage', 'release', 'replay', 'tasks', 'task', 'compile', 'run', 'plans', 'plan'] as const;
+const COMMANDS = ['focus', 'click', 'type', 'hover', 'scroll', 'select', 'keypress', 'drag', 'look', 'status', 'goto', 'extract', 'tab', 'dialog', 'upload', 'download', 'cookies', 'storage', 'release', 'replay', 'tasks', 'task', 'compile', 'run', 'plans', 'plan', 'query'] as const;
 type Command = (typeof COMMANDS)[number];
 
 function printHelp(): void {
@@ -139,6 +144,12 @@ Commands:
    plans                   List all saved plans (stored in OS data dir)
    plan <id>               Show plan details (steps, invariants)
    plan delete <id>        Delete a saved plan
+   query "<question>"     Ask a targeted question about the page — get a one-line
+     [--region <r>]          answer instead of a full page dump (Leap 4):
+                             query "submit button"     → find element by text (match)
+                             query "primary action"    → highest-priority CTA in a region
+                             query "form fields"       → all typeable inputs
+                             query "what changed"      → diff since last snapshot
 
 Options:
   --session <id>         Session ID (default: default)
@@ -215,6 +226,8 @@ async function main(): Promise<void> {
       // --include-hidden surfaces CSS-hidden / aria-hidden content (disclaimers,
       // deceptive patterns) that the a11y tree normally excludes.
       const model = await buildPageModel(page, { includeHidden });
+      // Save a model snapshot so `cairn query "what changed"` has a baseline
+      saveModelSnapshot(model, sessionId);
 
       if (visualMode) {
         // Vision fallback: capture a marked screenshot (numbered boxes over
@@ -282,6 +295,8 @@ async function main(): Promise<void> {
         session.saveState({ currentUrl: page.url(), focusedRegion: null });
         // Show the page immediately after navigation (self-describing)
         const model = await buildPageModel(page);
+        // Save a model snapshot so `cairn query "what changed"` has a baseline
+        saveModelSnapshot(model, sessionId);
         const output = renderPage(model, {});
         console.log(`navigated: ${page.url()}`);
         console.log(`title:     ${title}`);
@@ -937,6 +952,60 @@ async function main(): Promise<void> {
         process.exit(1);
       }
       console.log(renderPlanDetails(plan));
+      break;
+    }
+
+    case 'query': {
+      // ── Page Model as Query (Leap 4) ──
+      // Instead of dumping the full page tree, answer a targeted question
+      // with a compact one-line answer. Query types: match, primary-action,
+      // form-fields, diff. Saves tokens — the agent gets one fact, not a tree.
+      const question = commandArgs.join(' ');
+      if (!question) {
+        console.error('Usage: cairn query "<question>" [--region <r>]');
+        console.error('  Query types:');
+        console.error('    query "submit button"     — find element by text (match)');
+        console.error('    query "primary action"    — highest-priority CTA in a region');
+        console.error('    query "form fields"       — all typeable inputs');
+        console.error('    query "what changed"      — diff since last snapshot');
+        console.error('  Use --region <r> to scope to nav/main/sidebar/footer/form/modal');
+        process.exit(1);
+      }
+
+      const parsed = parseQueryType(question);
+      // --region flag overrides any region extracted from the question
+      const region = queryRegion ?? parsed.region ?? undefined;
+
+      if (parsed.type === 'diff') {
+        // Diff needs a Page (builds a fresh model + loads snapshot)
+        const result = await queryDiff(page, sessionId);
+        if (result.success) {
+          console.log(renderQueryResult(result));
+        } else {
+          console.error(`✗ ${renderQueryResult(result)}`);
+          process.exit(1);
+        }
+      } else {
+        // match / primary-action / form-fields are pure — build model, query
+        const model = await buildPageModel(page);
+        let result;
+        if (parsed.type === 'match') {
+          result = queryMatch(parsed.target ?? question, model, region);
+        } else if (parsed.type === 'primary-action') {
+          result = queryPrimaryAction(model, region);
+        } else {
+          result = queryFormFields(model, region);
+        }
+        if (result.success) {
+          console.log(renderQueryResult(result));
+          if (result.ref) {
+            console.error(`  → act with: cairn click ${result.ref} (or type, hover, etc.)`);
+          }
+        } else {
+          console.error(`✗ ${renderQueryResult(result)}`);
+          process.exit(1);
+        }
+      }
       break;
     }
 

@@ -2,7 +2,7 @@
 
 An agent-first browser testing tool — optimized for LLM agents, not test scripts.
 
-> **Status:** Phase 1 (MVP) + Phase 2 (vision fallback) + Phase 3 (NL goto intents) + Phase 4 (Steel Browser backend) + Phase 5 (skill packaging). The core loop works: navigate → look → click/type by stable ref → see compact deltas. Canvas/WebGL/shadow-DOM pages auto-suggest a marked screenshot (`cairn look --visual`). NL intents collapse the loop: `goto "click the sign in button"` runs perceive→ground→act→verify internally. Dialog-based search auto-resolves via click-to-reveal fallback. **Phase 4** adds a pluggable backend: drive a self-hosted [Steel Browser](https://github.com/steel-dev/steel-browser) chrome farm for session management, anti-detect (fingerprint injection), and per-session proxy rotation — or use the default local Chrome backend. **Phase 5** packages Cairn as an installable skill (`skills/cairn/SKILL.md` + agent usage instructions), modeled on the agent-browser skill format. **Capability hardening** (Tiers 1–2): 27 commands total — extended actions (`hover`/`scroll`/`select`/`keypress`/`drag`), tab/dialog/file-upload handling, structured `extract`, open-shadow-DOM piercing (refs stamped on shadow-root controls), `look --include-hidden` (surfaces `display:none`/`aria-hidden` content), `--trace` (captures failed XHRs/console errors/JS exceptions), a 9-code error taxonomy, and a lazy all-MiniLM-L6-v2 grounding-embeddings fallback for synonym matching. **Leaps 1–3**: task recording/replay with zero-LLM replay, transparent stale-ref self-healing, and NL-to-plan compilation (`compile`/`run`/`plans`). 17 test files (unit + E2E + hvac-regression). See [DESIGN.md](docs/DESIGN.md) for the full design and [COMPARISON.md](docs/COMPARISON.md) for a head-to-head vs agent-browser.
+> **Status:** Phase 1 (MVP) + Phase 2 (vision fallback) + Phase 3 (NL goto intents) + Phase 4 (Steel Browser backend) + Phase 5 (skill packaging). The core loop works: navigate → look → click/type by stable ref → see compact deltas. Canvas/WebGL/shadow-DOM pages auto-suggest a marked screenshot (`cairn look --visual`). NL intents collapse the loop: `goto "click the sign in button"` runs perceive→ground→act→verify internally. Dialog-based search auto-resolves via click-to-reveal fallback. **Phase 4** adds a pluggable backend: drive a self-hosted [Steel Browser](https://github.com/steel-dev/steel-browser) chrome farm for session management, anti-detect (fingerprint injection), and per-session proxy rotation — or use the default local Chrome backend. **Phase 5** packages Cairn as an installable skill (`skills/cairn/SKILL.md` + agent usage instructions), modeled on the agent-browser skill format. **Capability hardening** (Tiers 1–2): 27 commands total — extended actions (`hover`/`scroll`/`select`/`keypress`/`drag`), tab/dialog/file-upload handling, structured `extract`, open-shadow-DOM piercing (refs stamped on shadow-root controls), `look --include-hidden` (surfaces `display:none`/`aria-hidden` content), `--trace` (captures failed XHRs/console errors/JS exceptions), a 9-code error taxonomy, and a lazy all-MiniLM-L6-v2 grounding-embeddings fallback for synonym matching. **Leaps 1–4**: task recording/replay with zero-LLM replay, transparent stale-ref self-healing, NL-to-plan compilation (`compile`/`run`/`plans`), and page model as query (`query` — targeted one-line answers instead of full tree dumps). 19 test files (unit + E2E + hvac-regression). See [DESIGN.md](docs/DESIGN.md) for the full design and [COMPARISON.md](docs/COMPARISON.md) for a head-to-head vs agent-browser.
 
 ## Quick start
 
@@ -65,6 +65,15 @@ cairn run <plan-id>                  Re-execute a saved plan deterministically
 cairn plans / plan <id>              List / inspect saved plans
 ```
 
+**Leap 4 — page model as query (targeted one-line answers, not full tree dumps):**
+```
+cairn query "<question>" [--region <r>]  Ask a targeted question about the page
+  query "sign in"       → find element by text (match)
+  query "primary action" → highest-priority CTA in a region
+  query "form fields"   → all typeable inputs
+  query "what changed"  → diff since last snapshot
+```
+
 ## How it works
 
 1. **Persistent session**: Chrome launches as a detached background process on `127.0.0.1:9222`. Each CLI command connects via Playwright `connectOverCDP` — the browser stays alive across commands.
@@ -107,6 +116,7 @@ src/
 │   ├── embeddings.ts       Semantic grounding fallback (lazy all-MiniLM-L6-v2, synonym matching)
 │   ├── extract.ts          Structured data extraction (schema → JSON)
 │   ├── planner.ts          NL-to-plan compiler (splitGoal + compilePlan + executePlan) — Leap 1
+│   ├── query.ts            Page model as query (match/primary-action/form-fields/diff + snapshots) — Leap 4
 │   ├── recorder.ts         Task recording/replay (TaskRecorder + replayTask) — Leap 2
 │   └── self-heal.ts        Transparent stale-ref self-healing (findReplacementByAttributes) — Leap 3
 ├── actions/
@@ -151,6 +161,7 @@ npx tsx src/cli.ts goto https://example.com --steel
 - [x] **Leap 1**: NL-to-plan compiler (`compile`/`run`/`plans`) — compound NL goals compiled to deterministic multi-step plans
 - [x] **Leap 2**: Task recording/replay (`goto --record`/`replay`/`tasks`) — zero-LLM replay of recorded traces
 - [x] **Leap 3**: Transparent self-healing — stale refs auto-replaced by attribute matching on replay
+- [x] **Leap 4**: Page model as query (`query "question"`) — targeted one-line answers (match/primary-action/form-fields/diff) instead of full page tree dumps, with model snapshot persistence for cross-invocation diffs
 - [ ] **Phase 6**: Scale path (npm publish, `--json` output, MCP, session pool, Browserbase managed, optional Rust CDP orchestrator)
 
 See [DESIGN.md](docs/DESIGN.md) §7 for the full roadmap.

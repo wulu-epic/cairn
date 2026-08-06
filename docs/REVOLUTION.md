@@ -111,9 +111,11 @@ Each is mapped to Cairn's actual code — file + function level — so it's a co
 
 ---
 
-### Leap 4: Page Model as Query, Not Dump — ship answers, not trees
+### Leap 4: Page Model as Query, Not Dump — ship answers, not trees ✅ DONE
 
 **What:** Instead of dumping the full page tree (`look`), let the agent ask targeted queries and get one-line answers: "what's the primary action in this form?", "what changed since the last step?", "which elements match 'submit'?"
+
+**Status:** Implemented in `src/intent/query.ts`. Four query types: `match` (reuses `groundIntent` with typeable-element disambiguation), `primary-action` (highest-priority interactive node, prefers buttons/submit), `form-fields` (all typeable elements via `TYPEABLE_ROLES`), `diff` (reuses `computeDelta` against a persisted model snapshot in `.sessions/<id>.model.json`). Model snapshots auto-saved after `look` and `goto`. CLI: `cairn query "<question>" [--region <r>]`. 23 unit + 6 E2E tests.
 
 **Why it's revolutionary:** Every tool ships full snapshots. Even Cairn's compact `look -i` is 5.5 KB on Wikipedia. But the agent rarely needs the whole tree — it needs one answer. A query API would return: `query("primary-action", region="main")` → `button "Sign in" [e15]` (one line, ~30 bytes). That's a ~180× reduction on a 5.5 KB tree.
 
@@ -188,8 +190,8 @@ Each leap is powerful alone, but they compound into something no competitor has.
 |---|---|---|---|---|
 | ✅ 1 | **Transparent Self-Heal** (Leap 3) — **DONE** | Pieces exist; highest reliability gain per effort. Do this first — it makes everything else robust enough to build on. | Low-Med | Eliminates #1 failure mode (stale refs) |
 | ✅ 2 | **Task Recording + Replay** (Leap 2) — **DONE** | The asset-library foundation. Once you can record/replay, every other leap builds on it (plans ARE recorded traces; tests ARE compiled traces; speculation mines traces). | Medium | ~$0, ~10× latency on repeats |
-| 3 | **NL-to-Plan Compilation** (Leap 1) | The keystone — 10.4× speedup, +28% accuracy. Builds on the recorder (a compiled plan IS a recorded plan generalized). | Med-Hard | 10.4× / +28% (Agent JIT) |
-| 4 | **Page Model as Query** (Leap 4) | Token reduction on every step. Independent of the others — can build in parallel. | Medium | ~180× reduction per query |
+| ✅ 3 | **NL-to-Plan Compilation** (Leap 1) — **DONE** | The keystone — 10.4× speedup, +28% accuracy. Builds on the recorder (a compiled plan IS a recorded plan generalized). | Med-Hard | 10.4× / +28% (Agent JIT) |
+| ✅ 4 | **Page Model as Query** (Leap 4) — **DONE** | Token reduction on every step. Independent of the others — can build in parallel. | Medium | ~180× reduction per query |
 | 5 | **Speculative Execution** (Leap 5) | Last — needs the pattern library from recording + learning to be useful. | Medium | 43% latency (PASTE) |
 
 **The recommended sequence:** Self-heal first (make the core unbreakable) → record/replay (build the asset library) → NL-to-plan compilation (the 10× keystone) → query API (token efficiency) → speculative execution (latency hiding).
