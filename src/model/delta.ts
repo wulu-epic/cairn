@@ -21,6 +21,7 @@ export interface NodeDelta {
   change: 'added' | 'removed' | 'changed';
   role?: string;
   name?: string;
+  region?: string;
   before?: { name?: string; text?: string; interactive: boolean };
   after?: { name?: string; text?: string; interactive: boolean };
 }
@@ -90,6 +91,7 @@ export function computeDelta(prevModel: PageModel, currModel: PageModel): DeltaR
         change: 'added',
         role: curr.role,
         name: curr.name,
+        region: curr.region,
         after: {
           name: curr.name,
           text: curr.text,
@@ -107,6 +109,7 @@ export function computeDelta(prevModel: PageModel, currModel: PageModel): DeltaR
           change: 'changed',
           role: curr.role,
           name: curr.name,
+          region: curr.region,
           before: {
             name: prev.name,
             text: prev.text,
@@ -130,6 +133,7 @@ export function computeDelta(prevModel: PageModel, currModel: PageModel): DeltaR
         change: 'removed',
         role: prev.role,
         name: prev.name,
+        region: prev.region,
         before: {
           name: prev.name,
           text: prev.text,
@@ -174,30 +178,55 @@ export function renderDelta(delta: DeltaResult): string {
     return lines.join('\n');
   }
 
+  // Gap #6: surface text changes prominently. Text changes in modal/form
+  // regions (cart totals, item names) are the signal that an action had a
+  // semantic effect — e.g. clicking "add to cart" should change a total.
+  // Mark these with ★ so the agent notices them immediately, and show text
+  // content on added nodes (new cart items surface as "Caffee Latte $4.50").
+  const TEXT_HIGHLIGHT_REGIONS = ['modal', 'form'];
+  let textChanges = 0;
+
   for (const d of delta.nodes) {
     const ref = `[${d.ref}]`;
     const label = d.name ? `"${d.name}"` : '';
+    const inTextRegion = d.region ? TEXT_HIGHLIGHT_REGIONS.includes(d.region) : false;
 
     if (d.change === 'added') {
-      lines.push(`+ ${ref} ${d.role} ${label} (new${d.after?.interactive ? ', interactive' : ''})`);
+      // Show text content on added nodes — surfaces new cart items, new list
+      // entries, new totals. Previously only role+name showed, so a cart item
+      // "Caffee Latte $4.50" appeared as just "listitem" with no value.
+      const textPart = (d.after?.text && !d.name) ? ` "${d.after.text.slice(0, 50)}"` : '';
+      const regionPart = inTextRegion ? ` (${d.region})` : '';
+      lines.push(`+ ${ref} ${d.role} ${label}${textPart} (new${d.after?.interactive ? ', interactive' : ''}${regionPart})`);
     } else if (d.change === 'removed') {
-      lines.push(`- ${ref} ${d.role} ${label} (removed)`);
+      const textPart = (d.before?.text && !d.name) ? ` "${d.before.text.slice(0, 50)}"` : '';
+      lines.push(`- ${ref} ${d.role} ${label}${textPart} (removed)`);
     } else if (d.change === 'changed') {
       const changes: string[] = [];
       if (d.before?.name !== d.after?.name) {
         changes.push(`name: "${d.before?.name ?? ''}" → "${d.after?.name ?? ''}"`);
       }
       if (d.before?.text !== d.after?.text) {
-        changes.push(`text: "${(d.before?.text ?? '').slice(0, 40)}" → "${(d.after?.text ?? '').slice(0, 40)}"`);
+        const oldText = (d.before?.text ?? '').slice(0, 40);
+        const newText = (d.after?.text ?? '').slice(0, 40);
+        changes.push(`text: "${oldText}" → "${newText}"`);
+        if (inTextRegion) textChanges++;
       }
       if (d.before?.interactive !== d.after?.interactive) {
         changes.push(`interactive: ${d.before?.interactive} → ${d.after?.interactive}`);
       }
-      lines.push(`~ ${ref} ${d.role} ${label} — ${changes.join('; ')}`);
+      const marker = (inTextRegion && d.before?.text !== d.after?.text) ? '★ ' : '';
+      const regionPart = inTextRegion ? ` (${d.region})` : '';
+      lines.push(`${marker}~ ${ref} ${d.role} ${label}${regionPart} — ${changes.join('; ')}`);
     }
   }
 
-  lines.push(`(${delta.summary})`);
+  // Summary now includes a text-changes count when text changed in key regions
+  const parts: string[] = [delta.summary];
+  if (textChanges > 0) {
+    parts.push(`${textChanges} text change${textChanges === 1 ? '' : 's'} in modal/form`);
+  }
+  lines.push(`(${parts.join(', ')})`);
 
   return lines.join('\n');
 }
