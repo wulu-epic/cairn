@@ -36,6 +36,10 @@ import { selfHealByRef } from './intent/self-heal.js';
 import { compilePlan, executePlan, savePlan, loadPlan, listPlans, deletePlan, renderPlanList, renderPlanDetails, getPlansDir } from './intent/planner.js';
 import { parseQueryType, queryMatch, queryPrimaryAction, queryFormFields, queryDiff, saveModelSnapshot, renderQueryResult } from './intent/query.js';
 import { TraceCollector, decodeTrace } from './actions/trace.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const { version: CLI_VERSION } = require('../package.json') as { version: string };
 
 /** Detect whether a string looks like a URL (vs an NL intent goal). */
 function isURL(s: string): boolean {
@@ -178,6 +182,7 @@ Options:
                            errors, JS exceptions) during the action — answers
                            "I clicked and nothing happened, why?"
   --help, -h             Show this help
+  --version, -V          Show version
 
 Environment variables:
   STEEL_API_URL          Steel API base URL (e.g. http://localhost:3000)
@@ -190,6 +195,11 @@ Design: act by stable ref, never by coordinate. Every output is self-describing.
 
 if (!command || command === '--help' || command === '-h') {
   printHelp();
+  process.exit(0);
+}
+
+if (command === '--version' || command === '-V') {
+  console.log(`cairn ${CLI_VERSION}`);
   process.exit(0);
 }
 

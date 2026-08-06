@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sunset Café</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <h1 class="logo">Sunset Café</h1>
+      <button id="darkToggle" class="dark-toggle">🌙 Dark Mode</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <h2>Warm evenings, warmer coffee.</h2>
+      <p>Hand-poured brews and fresh pastries, served from dawn to dusk.</p>
+      <button class="featured-cta">View Today's Specials</button>
+    </section>
+
+    <section class="controls">
+      <div class="search-box">
+        <input id="searchInput" type="text" placeholder="Search the menu..." autocomplete="off">
+      </div>
+      <div class="filters" id="filterBar">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="coffee">Coffee</button>
+        <button class="filter-btn" data-filter="tea">Tea</button>
+        <button class="filter-btn" data-filter="pastry">Pastry</button>
+      </div>
+      <button id="cartBtn" class="cart-btn">
+        Cart <span id="cartCount" class="cart-count">0</span>
+      </button>
+    </section>
+
+    <section id="menu" class="menu-grid"></section>
+
+    <section class="contact">
+      <h2>Get in touch</h2>
+      <form id="contactForm" novalidate>
+        <label>Name
+          <input type="text" name="name" id="contactName" required>
+        </label>
+        <label>Email
+          <input type="text" name="email" id="contactEmail">
+        </label>
+        <label>Message
+          <textarea name="message" id="contactMessage" rows="4"></textarea>
+        </label>
+        <button type="submit" class="submit-btn">Send Message</button>
+        <p id="formMsg" class="form-msg"></p>
+      </form>
+    </section>
+
+    <footer class="footer">
+      <p>&copy; 2024 Sunset Café. Brewed with loev.</p>
+    </footer>
+  </main>
+
+  <!-- Cart overlay -->
+  <div id="cartOverlay" class="cart-overlay">
+    <div class="cart-panel">
+      <div class="cart-top">
+        <h3>Your Cart</h3>
+        <button id="closeCart" class="close-cart">&times;</button>
+      </div>
+      <div id="cartItems" class="cart-items"></div>
+      <div class="cart-summary">
+        <div class="summary-row"><span>Subtotal</span><span id="subtotalEl">$0.00</span></div>
+        <div class="summary-row"><span>Tax (8%)</span><span id="taxEl">$0.00</span></div>
+        <div class="coupon-row">
+          <input id="couponInput" type="text" placeholder="Coupon code">
+          <button id="applyCoupon" class="apply-btn">Apply</button>
+        </div>
+        <div class="summary-row total"><span>Total</span><span id="totalEl">$0.00</span></div>
+      </div>
+      <button id="checkoutBtn" class="checkout-btn">Checkout</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
