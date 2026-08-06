@@ -74,7 +74,7 @@ cairn release                 # Release the browser session
 --headless / --no-headless    # Headless (default) or visible browser window
 ```
 
-> **Dev invocation:** if `cairn` is not on PATH, run `npx tsx src/cli.ts <command>` instead. All commands and flags are identical.
+> **If `cairn` is not on PATH:** run `npx cairn-browser <command>` instead (downloads on first run, then cached). All commands and flags are identical. *(Developers working inside the repo may also use `npx tsx src/cli.ts <command>`.)*
 
 ## NL Intents — Collapse the Loop
 

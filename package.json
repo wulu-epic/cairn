@@ -8,17 +8,22 @@
     "cairn": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "start": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "tsc"
+    "prepublishOnly": "tsc -p tsconfig.build.json"
   },
   "files": [
     "dist",
     "skills"
   ],
+  "agents": {
+    "skills": [
+      { "name": "cairn", "path": "./skills/cairn" }
+    ]
+  },
   "dependencies": {
     "playwright": "^1.48.0"
   },
