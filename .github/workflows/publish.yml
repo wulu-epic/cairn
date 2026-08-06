@@ -1,0 +1,86 @@
+# Auto-publish to npm on every push to the default branch (master).
+#
+# The workflow only actually publishes when package.json's version is NEW
+# (i.e. different from the version currently on the npm registry). If the
+# version is unchanged, the job skips the publish step — so pushing unrelated
+# changes won't fail with "you cannot publish over the previously published
+# version".
+#
+# ── One-time setup ─────────────────────────────────────────────────────────
+# This workflow needs an npm access token to publish on your behalf.
+#
+# 1. Create an automation token at https://www.npmjs.com/settings/~/tokens
+#      (Classic Automation token, NOT a granular token — granular tokens
+#       can't publish via `npm publish` in CI reliably).
+# 2. Add it as a repository secret named NPM_TOKEN:
+#      GitHub repo → Settings → Secrets and variables → Actions →
+#        New repository secret → Name: NPM_TOKEN, Value: <paste token>
+# 3. Make sure the token's owner owns the `cairn-browser` package on npm.
+#
+# ── How to release a new version ───────────────────────────────────────────
+# Bump the version in package.json (e.g. 0.1.0 → 0.2.0), commit, and push to
+# master. This workflow will build and publish automatically.
+#   npm version patch  # or minor / major, then: git push --follow-tags
+# ────────────────────────────────────────────────────────────────────────────
+
+name: Publish to npm
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: {} # allow manual "Run workflow" from the Actions tab
+
+# npm provenance (the --provenance flag below) needs id-token: write.
+# If you remove --provenance, you can drop id-token: write too.
+permissions:
+  contents: read
+  id-token: write
+
+# Queue pushes — never cancel a publish already in flight.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22' # project targets @types/node ^22
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check if version is new
+        id: version-check
+        run: |
+          set -e
+          LOCAL_VERSION=$(node -p "require('./package.json').version")
+          # `npm view` exits non-zero if the package was never published
+          PUBLISHED_VERSION=$(npm view cairn-browser version 2>/dev/null || echo "none")
+          echo "Local version:     $LOCAL_VERSION"
+          echo "Published version: $PUBLISHED_VERSION"
+          if [ "$LOCAL_VERSION" != "$PUBLISHED_VERSION" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "New version detected — will build & publish."
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Version unchanged — skipping publish."
+          fi
+
+      - name: Build
+        if: steps.version-check.outputs.changed == 'true'
+        run: npm run build # tsc -p tsconfig.build.json → dist/
+
+      - name: Publish
+        if: steps.version-check.outputs.changed == 'true'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
