@@ -4,20 +4,57 @@ An agent-first browser testing tool — optimized for LLM agents, not test scrip
 
 > **Status:** Phase 1 (MVP) + Phase 2 (vision fallback) + Phase 3 (NL goto intents) + Phase 4 (Steel Browser backend) + Phase 5 (skill packaging). The core loop works: navigate → look → click/type by stable ref → see compact deltas. Canvas/WebGL/shadow-DOM pages auto-suggest a marked screenshot (`cairn look --visual`). NL intents collapse the loop: `goto "click the sign in button"` runs perceive→ground→act→verify internally. Dialog-based search auto-resolves via click-to-reveal fallback. **Phase 4** adds a pluggable backend: drive a self-hosted [Steel Browser](https://github.com/steel-dev/steel-browser) chrome farm for session management, anti-detect (fingerprint injection), and per-session proxy rotation — or use the default local Chrome backend. **Phase 5** packages Cairn as an installable skill (`skills/cairn/SKILL.md` + agent usage instructions), modeled on the agent-browser skill format. **Capability hardening** (Tiers 1–2): 27 commands total — extended actions (`hover`/`scroll`/`select`/`keypress`/`drag`), tab/dialog/file-upload handling, structured `extract`, open-shadow-DOM piercing (refs stamped on shadow-root controls), `look --include-hidden` (surfaces `display:none`/`aria-hidden` content), `--trace` (captures failed XHRs/console errors/JS exceptions), a 9-code error taxonomy, and a lazy all-MiniLM-L6-v2 grounding-embeddings fallback for synonym matching. **Leaps 1–4**: task recording/replay with zero-LLM replay, transparent stale-ref self-healing, NL-to-plan compilation (`compile`/`run`/`plans`), and page model as query (`query` — targeted one-line answers instead of full tree dumps). 19 test files (unit + E2E + hvac-regression). See [DESIGN.md](docs/DESIGN.md) for the full design and [COMPARISON.md](docs/COMPARISON.md) for a head-to-head vs agent-browser.
 
+## Installation
+
+### 1. CLI
+
+```bash
+# Install Cairn globally (provides the `cairn` command)
+npm install -g cairn-browser
+
+# Install the browser binary — one-time, ~170 MB
+npx playwright install chromium
+```
+
+> **Prefer not to install globally?** Use `npx cairn-browser <command>` — it downloads on first run, then caches. All commands and flags are identical.
+
+Verify it works:
+```bash
+cairn goto https://example.com   # navigates + shows the page tree
+cairn look                       # re-show the tree
+cairn click e6                   # click by stable ref
+```
+
+### 2. Agent skill (Claude Code, Cursor, Codex, …)
+
+Cairn ships as an [Agent Skill](https://agentskills.io) — an open standard (originated by Anthropic) for teaching AI agents *when* and *how* to use a tool. The CLI and the skill are **two separate installs**: the CLI drives the browser; the skill is the instructions that tell the agent to reach for `cairn` instead of hand-writing Playwright scripts.
+
+**Claude Code:**
+```
+/plugin marketplace add https://github.com/wulu-epic/cairn.git
+/plugin install cairn
+```
+
+**Other harnesses** (Cursor, Codex, Gemini CLI, OpenCode, OpenHands, Junie, … — see the [full client list](https://agentskills.io/clients)):
+
+Cairn's `package.json` declares its skill via the `agents.skills` field, so any harness that auto-discovers skills from `node_modules` picks it up once `cairn-browser` is a dependency:
+
+```bash
+npm install --save-dev cairn-browser
+```
+
+For harnesses without auto-discovery, copy the skill folder into your harness's skills directory — it ships inside the package at `node_modules/cairn-browser/skills/cairn/`. See the [Agent Skills client showcase](https://agentskills.io/clients) for harness-specific setup.
+
 ## Quick start
 
 ```bash
-# Install deps (Playwright is the browser control layer)
-npm install
-
-# Install Chromium browser (one-time)
-npx playwright install chromium
-
-# Run the CLI
-npx tsx src/cli.ts goto https://example.com
-npx tsx src/cli.ts look
-npx tsx src/cli.ts click e6
+cairn goto https://example.com         # navigate → page tree with [ref=eN] markers
+cairn type e13 "hello"                 # fill a field by ref (deterministic, no coordinates)
+cairn click e15                        # click by ref → see the delta (only what changed)
+cairn goto "click the sign in button"  # NL intent: perceive → ground → act → verify
 ```
+
+> **Developing Cairn itself?** Clone the repo, then `npm install && npx playwright install chromium` and run via `npx tsx src/cli.ts <command>`.
 
 ## Commands
 
@@ -162,6 +199,7 @@ npx tsx src/cli.ts goto https://example.com --steel
 - [x] **Leap 2**: Task recording/replay (`goto --record`/`replay`/`tasks`) — zero-LLM replay of recorded traces
 - [x] **Leap 3**: Transparent self-healing — stale refs auto-replaced by attribute matching on replay
 - [x] **Leap 4**: Page model as query (`query "question"`) — targeted one-line answers (match/primary-action/form-fields/diff) instead of full page tree dumps, with model snapshot persistence for cross-invocation diffs
-- [ ] **Phase 6**: Scale path (npm publish, `--json` output, MCP, session pool, Browserbase managed, optional Rust CDP orchestrator)
+- [x] **npm publish**: Published to npm as [`cairn-browser@0.1.0`](https://www.npmjs.com/package/cairn-browser) — `npm i -g cairn-browser` (see [Installation](#installation) above)
+- [ ] **Phase 6**: Scale path (`--json` output, MCP, session pool, Browserbase managed, PowerShell `iex` one-liner installer, optional Rust CDP orchestrator)
 
 See [DESIGN.md](docs/DESIGN.md) §7 for the full roadmap.
