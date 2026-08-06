@@ -6,7 +6,39 @@
 
 ---
 
-## TL;DR
+## Re-Hunt (post-fix): 8/9 bugs — both previously-missed bugs now found
+
+After fixing the two capability gaps from the original hunt (commit `8868496`: pierce open shadow roots + `look --include-hidden`), a fresh-context **debugger** subagent (with shell access — the general-purpose subagent type has no shell and cannot run the CLI) re-hunted the same site with no knowledge of the planted bugs. **Result: 8 of 9 planted bugs found (89%), up from 7/9 (78%) — and critically, both bugs the original hunt missed (#5 hidden disclaimer, #6 shadow-DOM filter) are now caught.** The single miss (#8, schedule button clears form) was a step-budget artifact, not a capability gap.
+
+| # | Bug | Original hunt | Re-hunt | How it was found now |
+|---|-----|:---:|:---:|---|
+| 1 | About Us → 404 | ✅ | ✅ | Clicked About Us link in nav + footer → saw the 404 page |
+| 2 | Contact form no validation | ✅ | ✅ | Submitted empty fields + invalid email "notanemail" → fake "✓ sent!" |
+| 3 | BTU calc (25 not 20) | ✅ | ✅ | Tested 1000 & 2000 sqft → 25,000 & 50,000 BTU (25×, not stated 20×) |
+| 4 | "Save 40%" (actual 30%) | ✅ | ✅ | Read featured-product card, did the math: $600/$1,999 = 30% |
+| 5 | Hidden warranty disclaimer | ❌ | ✅ **NEW** | `look --include-hidden` surfaced the `display:none` warranty text |
+| 6 | Shadow-DOM product filter | ❌ | ✅ **NEW** | Filter buttons now appear as refs; clicked Furnaces/AC → all 6 cards `display:none` |
+| 7 | Services tabs miswired | ✅ | ✅ | Clicked Repair tab → saw Installation panel content instead |
+| 8 | Schedule button clears form | ✅ | ❌ | **Not tested** — subagent hit its 70-step cap before reaching this button |
+| 9 | ZIP off-by-one (14999 rejected) | ✅ | ✅ | Tested boundary: 10000 ✓ (in area), 14999 ✗ (rejected — strict `<`) |
+
+**Bonus find:** A formatting bug on the Contact page — the "Our Office" section renders "Metro CityMon–Fri" (missing space/line break between the address and the hours). Not a planted bug; a real layout defect the subagent caught independently.
+
+**Commands:** ~50 Cairn CLI commands (down from 72 in the original hunt). The subagent used ~50 commands across 58 LLM steps and hit its 70-step cap.
+
+### Why the two previously-missed bugs are now found
+
+- **#5 (hidden disclaimer):** The `look --include-hidden` flag (new in commit `8868496`) stops pruning `display:none`/`visibility:hidden`/`aria-hidden` content — instead it marks each node with a hidden reason and keeps it in the tree. The subagent ran `look --include-hidden` on the home page and saw the warranty text flagged as `(hidden: display)`, including the labor-cost limitation that contradicts the visible "10-year warranty" claim.
+
+- **#6 (shadow-DOM filter):** The page model's `walk()` now recurses into `el.shadowRoot.children` for open shadow roots, stamping `data-cairn-ref` attributes on shadow-DOM controls. The filter buttons (`All`/`Furnaces`/`Air Conditioners`/`Thermostats`) now surface as normal refs (`[e16]`–`[e19]`). The subagent clicked them and watched all product cards vanish (via the delta output), then confirmed with `--include-hidden` that all 6 cards were `display:none` — fully characterizing the bug.
+
+### What didn't change (and why)
+
+Bug #8 (schedule button clears form) was found in the original hunt but not in the re-hunt — solely because the debugger subagent exhausted its 70-step budget exploring the other 4 pages first and explicitly listed "Schedule Service button not tested" in its gaps. This is **not a regression**: the capability is unchanged (the original hunt fully characterized it: filled the form, clicked Schedule, saw "Form cleared"). A re-run with more steps, or starting from the Contact page, would catch it. The subagent also noted two Services FAQ items it couldn't click (a tooling limitation with the accordion's clickable generic containers, not a site bug — the answers are present in the `--include-hidden` view).
+
+---
+
+## Original hunt — TL;DR
 
 | Metric | Cairn | agent-browser | Winner |
 |--------|-------|---------------|--------|
