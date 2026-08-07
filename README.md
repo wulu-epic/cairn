@@ -1,33 +1,21 @@
 # Cairn
 
-An agent-first browser testing tool — optimized for LLM agents, not test scripts.
+An agent-first browser automation tool — optimized for LLM agents, not test scripts.
 
-> **Status:** Phase 1 (MVP) + Phase 2 (vision fallback) + Phase 3 (NL goto intents) + Phase 4 (Steel Browser backend) + Phase 5 (skill packaging). The core loop works: navigate → look → click/type by stable ref → see compact deltas. Canvas/WebGL/shadow-DOM pages auto-suggest a marked screenshot (`cairn look --visual`). NL intents collapse the loop: `goto "click the sign in button"` runs perceive→ground→act→verify internally. Dialog-based search auto-resolves via click-to-reveal fallback. **Phase 4** adds a pluggable backend: drive a self-hosted [Steel Browser](https://github.com/steel-dev/steel-browser) chrome farm for session management, anti-detect (fingerprint injection), and per-session proxy rotation — or use the default local Chrome backend. **Phase 5** packages Cairn as an installable skill (`skills/cairn/SKILL.md` + agent usage instructions), modeled on the agent-browser skill format. **Capability hardening** (Tiers 1–2): 29 commands total — `attr`/`eval` (element state read + read-only JS escape hatch), click occlusion diagnostic, input-value echo, extended actions (`hover`/`scroll`/`select`/`keypress`/`drag`), tab/dialog/file-upload handling, structured `extract`, open-shadow-DOM piercing (refs stamped on shadow-root controls), `look --include-hidden` (surfaces `display:none`/`aria-hidden` content), `--trace` (captures failed XHRs/console errors/JS exceptions), a 9-code error taxonomy, and a lazy all-MiniLM-L6-v2 grounding-embeddings fallback for synonym matching. **Leaps 1–4**: task recording/replay with zero-LLM replay, transparent stale-ref self-healing, NL-to-plan compilation (`compile`/`run`/`plans`), and page model as query (`query` — targeted one-line answers instead of full tree dumps). 22 test files (249 unit tests + E2E + hvac-regression). See [DESIGN.md](docs/DESIGN.md) for the full design and [COMPARISON.md](docs/COMPARISON.md) for a head-to-head vs agent-browser.
+Act by **stable ref**, never by coordinate. See compact **deltas** after actions, not full page dumps. Run **natural-language intents** that collapse 4–5 agent round-trips into one command.
 
-## Installation
-
-### 1. CLI
+## Install
 
 ```bash
-# Install Cairn globally (provides the `cairn` command)
 npm install -g cairn-browser
-
-# Install the browser binary — one-time, ~170 MB
 npx playwright install chromium
 ```
 
-> **Prefer not to install globally?** Use `npx cairn-browser <command>` — it downloads on first run, then caches. All commands and flags are identical.
+> Prefer not to install globally? Use `npx cairn-browser <command>` — same commands, downloads on first run.
 
-Verify it works:
-```bash
-cairn goto https://example.com   # navigates + shows the page tree
-cairn look                       # re-show the tree
-cairn click e6                   # click by stable ref
-```
+### Agent skill (Claude Code, Cursor, Codex, …)
 
-### 2. Agent skill (Claude Code, Cursor, Codex, …)
-
-Cairn ships as an [Agent Skill](https://agentskills.io) — an open standard (originated by Anthropic) for teaching AI agents *when* and *how* to use a tool. The CLI and the skill are **two separate installs**: the CLI drives the browser; the skill is the instructions that tell the agent to reach for `cairn` instead of hand-writing Playwright scripts.
+Cairn ships as an [Agent Skill](https://agentskills.io) — instructions that tell your AI agent to reach for `cairn` instead of hand-writing Playwright scripts.
 
 **Claude Code:**
 ```
@@ -35,70 +23,78 @@ Cairn ships as an [Agent Skill](https://agentskills.io) — an open standard (or
 /plugin install cairn
 ```
 
-**Other harnesses** (Cursor, Codex, Gemini CLI, OpenCode, OpenHands, Junie, … — see the [full client list](https://agentskills.io/clients)):
-
-Cairn's `package.json` declares its skill via the `agents.skills` field, so any harness that auto-discovers skills from `node_modules` picks it up once `cairn-browser` is a dependency:
-
+**Other harnesses** (auto-discovery via `package.json` `agents.skills` field):
 ```bash
 npm install --save-dev cairn-browser
 ```
-
-For harnesses without auto-discovery, copy the skill folder into your harness's skills directory — it ships inside the package at `node_modules/cairn-browser/skills/cairn/`. See the [Agent Skills client showcase](https://agentskills.io/clients) for harness-specific setup.
 
 ## Quick start
 
 ```bash
 cairn goto https://example.com         # navigate → page tree with [ref=eN] markers
-cairn type e13 "hello"                 # fill a field by ref (deterministic, no coordinates)
-cairn click e15                        # click by ref → see the delta (only what changed)
+cairn type e13 "hello"                 # fill a field by ref
+cairn click e15                        # click by ref → see only what changed
 cairn goto "click the sign in button"  # NL intent: perceive → ground → act → verify
 ```
 
-> **Developing Cairn itself?** Clone the repo, then `npm install && npx playwright install chromium` and run via `npx tsx src/cli.ts <command>`.
+## Why Cairn
+
+**Refs, not coordinates.** Elements get stable refs (`e1`, `e2`, …) stamped as DOM attributes. The agent says "click e15" — deterministic, no location hallucination. Vision can perceive (`look --visual`), but refs always ground.
+
+**Delta output.** After an action, Cairn shows only what changed (`+` added / `-` removed / `~` changed), not a full page re-dump. One action = ~one line of output.
+
+**NL intents.** `goto "click the sign in button"` runs the full perceive→ground→act→verify loop internally — deterministic, no in-tool LLM call. The agent states intent in English; Cairn handles grounding via fuzzy token overlap, role/region scoring, synonym matching, and light stemming.
+
+**Interactivity fusion.** Cairn doesn't just trust ARIA. It fuses native tags + ARIA roles + `tabindex` + `cursor:pointer` + inline `onclick` + `contenteditable` — catches div-as-button that attribute-only tools miss.
+
+**Self-healing.** Stale refs are automatically re-grounded by attribute matching. Task recording/replay lets you capture a flow once and replay it deterministically with zero LLM calls.
 
 ## Commands
 
+### Navigation + page model
+
 ```
-# Navigation + page model
 cairn goto <url>           Navigate to a URL (shows page tree immediately)
 cairn goto "<nl goal>"     Run an NL intent: perceive → ground → act → verify
-                          e.g. goto "click the sign in button"
-                          e.g. goto "type hello into the email field"
 cairn look [--visual] [-i] Show page tree; --visual adds a marked screenshot,
-                          -i shows only interactive elements (compact, ~2.5x smaller)
-                          --include-hidden surfaces CSS/aria-hidden content
+                           -i shows only interactive elements (compact)
 cairn focus <region|ref>   Zoom into a region (nav/main/sidebar/footer/modal)
+cairn query "<question>"   Ask a targeted question → one-line answer, not a full dump
+                           query "sign in"       → find element by text
+                           query "primary action" → highest-priority CTA
+                           query "form fields"   → all typeable inputs
+                           query "what changed"  → diff since last snapshot
+```
 
-# Actions (by stable ref)
-cairn click <ref>          Click by stable ref (deterministic, no coordinates)
+### Actions (by stable ref)
+
+```
+cairn click <ref>          Click by ref
 cairn type <ref> <text>    Fill a field by ref (echoes the actual value received)
 cairn attr <ref>           Read one element's exact state: tag, role, name, text,
-                           value, classes, checked/disabled, aria-* — for confirming
-                           toggles, reading cart innerText, tracking button state
-cairn eval "<js>"          Run read-only JS in the page (getComputedStyle, innerText,
-                           computed values) — escape hatch for state not surfaced
-                           by the model or attr. Read-only by convention.
+                           value, classes, checked/disabled, aria-*
+cairn eval "<js>"          Run read-only JS in the page (getComputedStyle, innerText)
 cairn hover <ref>          Hover over an element (dropdowns, tooltips)
 cairn scroll <ref|dir>     Scroll element into view, or page up/down/top/bottom
 cairn select <ref> <value> Select a dropdown option by ref
 cairn keypress <key>       Press a key (Enter, Escape, Control+a, …)
 cairn drag <ref1> <ref2>   Drag element ref1 to element ref2
 cairn extract <schema>     Structured data extraction (JSON output)
+```
 
-# Tabs, dialogs, files, storage
+### Tabs, dialogs, files, storage
+
+```
 cairn tab <list|switch|close|new>   Tab management
 cairn dialog <accept|dismiss> [text] Auto-handle JS dialogs (alert/confirm/prompt)
 cairn upload <ref> <path>  Upload a file to an <input type=file> by ref
 cairn download <ref>       Click a download link by ref, save to .sessions/
 cairn cookies <list|clear> Cookie management
 cairn storage <save|restore> Storage state persistence (cookies + localStorage)
-
-# Session
-cairn status               Show session state (URL, region, connection)
-cairn release              Release the browser session
 ```
 
-**Leaps — recording, replay, and planning (zero-LLM deterministic execution):**
+### Recording, replay, and planning
+
 ```
 cairn goto "<goal>" --record <name>  Record a task trace for zero-LLM replay
 cairn replay <task-id>               Replay a recorded task (self-heals stale refs)
@@ -108,106 +104,64 @@ cairn run <plan-id>                  Re-execute a saved plan deterministically
 cairn plans / plan <id>              List / inspect saved plans
 ```
 
-**Leap 4 — page model as query (targeted one-line answers, not full tree dumps):**
+### Session
+
 ```
-cairn query "<question>" [--region <r>]  Ask a targeted question about the page
-  query "sign in"       → find element by text (match)
-  query "primary action" → highest-priority CTA in a region
-  query "form fields"   → all typeable inputs
-  query "what changed"  → diff since last snapshot
+cairn status               Show session state (URL, region, connection)
+cairn release              Release the browser session
+```
+
+### Flags
+
+```
+--session <id>         Session ID (default: default)
+--steel                Use self-hosted Steel Browser backend (anti-detect + proxy)
+--proxy <url>          Per-session proxy (http://user:pass@host:port or socks5://)
+--user-agent <str>     Custom User-Agent
+--headless / --no-headless  Headless (default) or visible window
+--visual               Marked screenshot (numbered boxes over interactive elements)
+-i, --interactive-only Show only interactive elements (compact, ~3x smaller)
+--include-hidden       Surface CSS-hidden / aria-hidden content
+--record <name>        Record an NL goto intent as a replayable task
+--trace                Capture non-DOM side effects (failed XHRs, console errors)
 ```
 
 ## How it works
 
-1. **Persistent session**: Chrome launches as a detached background process on `127.0.0.1:9222`. Each CLI command connects via Playwright `connectOverCDP` — the browser stays alive across commands.
+1. **Persistent session** — Chrome launches as a detached background process. Each CLI command connects via Playwright `connectOverCDP`. The browser stays alive across commands.
 
-2. **Page model**: One `page.evaluate()` call walks the DOM and builds a tree of enhanced nodes — each with a stable ref (`e1`, `e2`, ...), role, accessible name, bounding box, inferred interactivity, and region classification.
+2. **Page model** — One `page.evaluate()` call walks the DOM and builds a tree of enhanced nodes: stable ref, role, accessible name, bounding box, inferred interactivity, region classification. Shadow-DOM piercing and iframe support included.
 
-3. **Inferred interactivity**: Instead of trusting ARIA attributes (which "lie" on custom widgets), we fuse: native tags + ARIA roles + tabindex + `cursor:pointer` + inline `onclick` + contenteditable + visibility. This catches div-as-button that attribute-only tools miss.
+3. **Ref-based actions** — Refs are stamped as `data-cairn-ref` attributes. Actions resolve `ref → [data-cairn-ref="eN"] → Playwright action`. The agent never outputs coordinates.
 
-4. **Hierarchical renderer**: Produces a compact, bash-like tree with `[ref=eN]` refs and region clustering (▼ Header / ▼ Main / ▼ Footer). `focus` zooms into a subtree for token efficiency.
+4. **Delta output** — A `MutationObserver` waits for the page to settle after an action, then Cairn re-snapshots and diffs by ref. An action that changes one field costs ~one line, not a full page dump.
 
-5. **Ref-based actions**: Refs are stamped as `data-cairn-ref` attributes during model build. Actions resolve `ref → [data-cairn-ref="eN"] → Playwright action`. The agent never outputs coordinates.
+5. **NL grounding** — The intent parser extracts verb + target + role/region hints. The grounder scores all interactive nodes via token overlap, Levenshtein fuzzy matching, substring match, synonym dictionary, light stemming, abbreviation expansion, and role/region/typeability bonuses — all deterministic, no LLM call. An optional embeddings fallback (all-MiniLM-L6-v2, 25MB) catches novel synonyms.
 
-6. **Delta output**: After an action, a `MutationObserver` waits for the page to settle, then we re-snapshot and diff by ref — emitting only what changed (`+` added / `-` removed / `~` changed). An action that changes one field costs ~one line, not a full page dump.
+6. **Vision fallback** — On canvas/WebGL/shadow-DOM pages, `look --visual` captures a marked screenshot with numbered boxes over every interactive element — labeled with the same refs the tree uses. Vision perceives, refs ground.
 
-7. **Vision fallback** (Phase 2): The structured model is blind to canvas/WebGL/closed shadow-DOM. When the page is media-rich, `look` auto-suggests `--visual`, which captures a full-page screenshot with numbered boxes over every interactive element — labeled with the *same* refs the tree uses. The agent looks at the image to disambiguate, then still acts by ref (`cairn click e15`), never by coordinate. This is what eliminates location hallucination: vision perceives, refs ground.
+## Steel Browser backend
 
-8. **NL goto intents** (Phase 3): The `goto` command accepts either a URL or a natural-language goal. `goto "click the sign in button"` runs the full perceive→ground→act→verify loop internally (deterministic, no in-tool LLM call) — the agent states intent in English and the tool handles grounding via fuzzy token overlap + role/region/typeability scoring. When a type intent can't find the field (e.g. search hidden behind a dialog), the click-to-reveal fallback auto-clicks the matching link/button, waits for the dialog to open, and re-grounds + types — all in one command.
-
-## Architecture
-
-```
-src/
-├── cli.ts                  CLI entry point + command dispatch (27 commands) + flag parsing
-├── config.ts               Config layering (defaults < env vars < CLI flags)
-├── errors.ts               Error taxonomy (9 codes: E_NOT_FOUND/E_AMBIGUOUS/E_BROWSER_DEAD/E_REF_STALE/…) + CairnError
-├── test-utils.ts           Mock builders (makeNode/makeModel) for unit tests
-├── session/
-│   ├── session.ts          SessionManager — backend-agnostic, Steel or local Chrome + auto-fallback
-│   ├── backend.ts          BrowserBackend interface + LocalChromeBackend (detached Chrome + connectOverCDP)
-│   └── steel.ts            SteelBackend — REST API client + connectOverCDP via websocketUrl
-├── model/
-│   ├── page-model.ts       Spatial-semantic page model (DOM walk + interactivity + regions
-│   │                       + open-shadow-DOM piercing + iframe + CSS-hidden surfacing)
-│   ├── interactivity.ts    Interactivity inference logic (injected into browser)
-│   └── delta.ts            MutationObserver + diff-by-ref delta output
-├── intent/
-│   ├── parser.ts           NL intent parser (deterministic → Click/Type/Navigate)
-│   ├── grounding.ts        Fuzzy grounding (token overlap + role/region/typeability scoring → ref)
-│   ├── execute.ts          Full perceive→ground→act→verify loop + click-to-reveal fallback
-│   ├── embeddings.ts       Semantic grounding fallback (lazy all-MiniLM-L6-v2, synonym matching)
-│   ├── extract.ts          Structured data extraction (schema → JSON)
-│   ├── planner.ts          NL-to-plan compiler (splitGoal + compilePlan + executePlan) — Leap 1
-│   ├── query.ts            Page model as query (match/primary-action/form-fields/diff + snapshots) — Leap 4
-│   ├── recorder.ts         Task recording/replay (TaskRecorder + replayTask) — Leap 2
-│   └── self-heal.ts        Transparent stale-ref self-healing (findReplacementByAttributes) — Leap 3
-├── actions/
-│   ├── click.ts / type.ts / focus.ts   Core ref-based actions (click + occlusion diagnostic, type + value-echo)
-│   ├── attr.ts / eval.ts               Element state read (attr) + read-only JS escape hatch (eval)
-│   ├── hover.ts / scroll.ts / select.ts / keypress.ts / drag.ts   Extended actions
-│   ├── tabs.ts / dialog.ts / files.ts  Tab / dialog / file-upload-download handling
-│   └── trace.ts            Non-DOM side-effect capture (--trace: failed XHRs, console errors)
-├── render/renderer.ts      Hierarchical tree renderer (regions + media-rich warning
-│                           + interactive-only + hidden-content markers)
-└── vision/
-    └── screenshot.ts       Marked screenshot capture (numbered boxes over interactive els, same refs)
-```
-
-## Development
-
-```bash
-npx tsc --noEmit           # Typecheck
-npx tsx src/cli.ts --help  # Run CLI
-npx tsx scripts/test-cdp.ts   # Test CDP connection + ariaSnapshot
-npx tsx scripts/test-model.ts # Test page model + interactivity inference
-```
-
-## Docker — Steel Browser (Phase 4)
-
-The docker-compose runs [Steel Browser](https://github.com/steel-dev/steel-browser) (Apache-2.0, free to self-host) — a chrome farm with session management, anti-detect (fingerprint injection), and proxy rotation. Ports: 3000 (REST API + UI), 9223 (CDP websocket proxy). Steel handles the Chrome 111+ non-loopback CDP restriction internally via its own CDP proxy, so it works on Windows/Mac Docker Desktop (unlike raw Chromium in Docker).
+Cairn supports a pluggable backend. The default is local Chrome; alternatively, drive a self-hosted [Steel Browser](https://github.com/steel-dev/steel-browser) chrome farm for session management, anti-detect (fingerprint injection), and per-session proxy rotation.
 
 ```bash
 docker compose up -d                    # Start Steel Browser
-# UI: http://localhost:3000/ui          # Visual session viewer
-# Then drive it with the CLI:
-npx tsx src/cli.ts goto https://example.com --steel
+cairn goto https://example.com --steel  # Drive it with the CLI
 ```
 
-## Roadmap
+## Developing
 
-- [x] **Phase 1 (MVP)**: Page model + ref-based actions + persistent session + delta output
-- [x] **Phase 2**: Vision fallback (marked screenshots for canvas/shadow-DOM ambiguity)
-- [x] **Phase 3**: High-level `goto "nl goal"` (internal perceive→ground→act→verify loop) + `--interactive-only` flag + click-to-reveal multi-step intent composition
-- [x] **Phase 4**: Steel Browser backend (self-hosted chrome farm, anti-detect, proxy rotation, `--steel`/`--proxy`/`--user-agent` flags, `release` command, backend abstraction)
-- [x] **Phase 5**: Skill packaging (renamed to Cairn, `skills/cairn/SKILL.md` + agent usage instructions + reference doc, like agent-browser ships)
-- [x] **Capability hardening**: extended actions (hover/scroll/select/keypress/drag), tabs, iframe support, dialogs, file upload/download, cookies/storage, structured `extract`, open-shadow-DOM piercing, `look --include-hidden`, `--trace` (non-DOM side-effect capture), error taxonomy, grounding embeddings fallback, 17 test files
-- [x] **Leap 1**: NL-to-plan compiler (`compile`/`run`/`plans`) — compound NL goals compiled to deterministic multi-step plans
-- [x] **Leap 2**: Task recording/replay (`goto --record`/`replay`/`tasks`) — zero-LLM replay of recorded traces
-- [x] **Leap 3**: Transparent self-healing — stale refs auto-replaced by attribute matching on replay
-- [x] **Leap 4**: Page model as query (`query "question"`) — targeted one-line answers (match/primary-action/form-fields/diff) instead of full page tree dumps, with model snapshot persistence for cross-invocation diffs
-- [x] **npm publish**: Published to npm as [`cairn-browser@0.1.0`](https://www.npmjs.com/package/cairn-browser) — `npm i -g cairn-browser` (see [Installation](#installation) above)
-- [x] **Capability fixes (COMPARISON.md gap analysis)**: `attr <ref>` (read one element's exact state — tag/role/name/text/value/classes/checked/disabled/aria-*), `eval "<js>"` (read-only JS escape hatch for getComputedStyle/innerText), click occlusion diagnostic (elementFromPoint on click failure reports the occluder), input-value echo on `type` (verify the field received the text, warn on mismatch), text-node surfacing in page model (modal/form/cart regions now show text in `look -i`), delta-text auto-detection (★-marked text changes in key regions — automatic mis-wire/total detector)
-- [ ] **Phase 6**: Scale path (`--json` output, MCP, session pool, Browserbase managed, PowerShell `iex` one-liner installer, optional Rust CDP orchestrator)
+```bash
+git clone https://github.com/wulu-epic/cairn.git
+cd cairn
+npm install
+npx playwright install chromium
 
-See [DESIGN.md](docs/DESIGN.md) §7 for the full roadmap.
+npx tsx src/cli.ts <command>     # Run CLI
+npx tsc --noEmit                 # Typecheck
+npm test                         # Run tests
+```
+
+## License
+
+MIT
