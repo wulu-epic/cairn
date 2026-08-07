@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { groundIntent, groundIntentWithFallback, renderGroundResult, levenshtein, canonicalizePhrase, stemToken } from './grounding.js';
+import { groundIntent, groundIntentWithFallback, renderGroundResult, levenshtein, canonicalizePhrase, stemToken, expandAbbreviation } from './grounding.js';
 import type { Intent } from './parser.js';
 import { makeNode, makeModel } from '../test-utils.js';
 
@@ -285,6 +285,69 @@ describe('groundIntent — morphological variants via stemming', () => {
       makeNode({ ref: 'e1', role: 'switch', name: 'Disable', interactive: true }),
     ]);
     const result = groundIntent({ kind: 'click', target: 'disabled' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+});
+
+// ─── Abbreviation expansion ────────────────────────────────────
+
+describe('expandAbbreviation', () => {
+  it('expands pwd → password', () => {
+    expect(expandAbbreviation('pwd')).toBe('password');
+  });
+
+  it('expands btn → button', () => {
+    expect(expandAbbreviation('btn')).toBe('button');
+  });
+
+  it('expands cfg → config', () => {
+    expect(expandAbbreviation('cfg')).toBe('config');
+  });
+
+  it('expands qty → quantity', () => {
+    expect(expandAbbreviation('qty')).toBe('quantity');
+  });
+
+  it('passes through non-abbreviations unchanged', () => {
+    expect(expandAbbreviation('submit')).toBe('submit');
+    expect(expandAbbreviation('email')).toBe('email');
+  });
+});
+
+describe('groundIntent — abbreviation matching', () => {
+  it('matches "pwd" to a "Password" field for type intents', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'textbox', name: 'Password', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'type', target: 'pwd', text: 'secret123' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('matches "btn" to a "Button" label (via expansion + overlap)', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'button', name: 'Submit Button', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'click', target: 'submit btn' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('matches "cfg" to a "Config" link', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'link', name: 'Config', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'navigate', target: 'cfg' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('matches "qty" to a "Quantity" field', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'spinbutton', name: 'Quantity', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'type', target: 'qty', text: '3' }, model);
     expect(result.status).toBe('match');
     if (result.status === 'match') expect(result.ref).toBe('e1');
   });

@@ -110,6 +110,58 @@ export function canonicalizePhrase(s: string): string {
 
 // ─── Helpers ───────────────────────────────────────────────────
 
+// Common UI abbreviations → their expanded forms. Applied during
+// tokenization so "pwd" matches "password", "btn" matches "button", etc.
+const ABBREVIATIONS: Record<string, string> = {
+  pwd: 'password',
+  pw: 'password',
+  usr: 'user',
+  usrnm: 'username',
+  cfg: 'config',
+  acct: 'account',
+  btn: 'button',
+  msg: 'message',
+  auth: 'authentication',
+  repo: 'repository',
+  desc: 'description',
+  pref: 'preferences',
+  dlg: 'dialog',
+  del: 'delete',
+  img: 'image',
+  max: 'maximum',
+  min: 'minimum',
+  num: 'number',
+  qty: 'quantity',
+  db: 'database',
+  attr: 'attribute',
+  opt: 'option',
+  opts: 'options',
+  sys: 'system',
+  txt: 'text',
+};
+
+/** Expand a known abbreviation to its full form, or return the token as-is. */
+export function expandAbbreviation(t: string): string {
+  return ABBREVIATIONS[t] ?? t;
+}
+
+// Pre-compile abbreviation regexes for phrase-level expansion (before canonicalization)
+const ABBREVIATION_ENTRIES: Array<{ regex: RegExp; full: string }> = Object.entries(ABBREVIATIONS)
+  .sort((a, b) => b[0].length - a[0].length)
+  .map(([abbr, full]) => ({
+    regex: new RegExp(`\\b${escapeRegex(abbr)}\\b`, 'gi'),
+    full,
+  }));
+
+/** Expand abbreviations at the phrase level so they flow through canonicalization too. */
+function expandAbbreviationsInPhrase(s: string): string {
+  let result = s;
+  for (const { regex, full } of ABBREVIATION_ENTRIES) {
+    result = result.replace(regex, full);
+  }
+  return result;
+}
+
 // Common UI nouns where "-ing" is part of the root, not a suffix.
 // Without this, "setting" would be stripped to "sett", breaking the
 // "settings" → "setting" match.
@@ -154,14 +206,14 @@ export function stemToken(w: string): string {
   return w;
 }
 
-/** Tokenize: lowercase, strip punctuation, split on whitespace, stem each token. */
+/** Tokenize: lowercase, strip punctuation, split, expand abbreviations, stem. */
 function tokenize(s: string): string[] {
   return s
     .toLowerCase()
     .replace(/[^\w\s]/g, ' ')
     .split(/\s+/)
     .filter((t) => t.length > 0)
-    .map(stemToken);
+    .map((t) => stemToken(expandAbbreviation(t)));
 }
 
 /**
@@ -283,9 +335,9 @@ function scoreNode(node: EnhancedNode, intent: Intent): GroundCandidate {
   let score = 0;
   const reasons: string[] = [];
 
-  const targetText = canonicalizePhrase(intent.target ?? '');
+  const targetText = canonicalizePhrase(expandAbbreviationsInPhrase(intent.target ?? ''));
   const targetTokens = tokenize(targetText);
-  const nodeText = canonicalizePhrase(nodeSearchText(node));
+  const nodeText = canonicalizePhrase(expandAbbreviationsInPhrase(nodeSearchText(node)));
   const nodeTokens = tokenize(nodeText);
 
   // Token overlap (primary signal)
