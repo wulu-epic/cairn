@@ -162,6 +162,14 @@ npx tsc --noEmit                 # Typecheck
 npm test                         # Run tests
 ```
 
+## Contributing
+
+Contributions are welcome — bug reports, feature ideas, and pull requests all help.
+
+- **Bugs:** Open an [issue](https://github.com/wulu-epic/cairn/issues) with steps to reproduce, the command you ran, and the output you got.
+- **Features:** Open an issue first to discuss the approach before building.
+- **PRs:** Fork the repo, branch from `master`, run `npm test` before submitting. Keep commits focused.
+
 ## License
 
 MIT
