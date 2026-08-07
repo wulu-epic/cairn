@@ -54,6 +54,60 @@ const ROLE_ALIASES: Record<string, string[]> = {
   switch: ['switch', 'button'],
 };
 
+// ─── Synonym dictionary ────────────────────────────────────────
+// Multi-word phrases like "log in" and "sign in" share zero tokens, so
+// token overlap + Levenshtein can never bridge them. This static map
+// canonicalizes known UI synonyms before scoring, catching the majority
+// of real-world vocabulary mismatches without an embeddings download.
+// The first element of each group is the canonical form.
+
+const SYNONYM_GROUPS: string[][] = [
+  ['sign in', 'log in', 'login', 'log on', 'sign on'],
+  ['sign out', 'log out', 'logout', 'log off', 'sign off'],
+  ['sign up', 'register', 'create account', 'join'],
+  ['submit', 'continue', 'proceed'],
+  ['email', 'e-mail', 'email address'],
+  ['username', 'user id'],
+  ['password', 'passcode'],
+  ['search', 'find', 'lookup'],
+  ['cart', 'basket', 'shopping cart'],
+  ['checkout', 'purchase'],
+  ['cancel', 'dismiss', 'close'],
+  ['confirm', 'ok', 'accept'],
+  ['settings', 'preferences', 'config', 'options'],
+  ['delete', 'remove', 'trash'],
+  ['edit', 'modify'],
+  ['save', 'update', 'apply'],
+  ['buy now', 'buy'],
+];
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Pre-compile: each synonym phrase → its canonical form, sorted longest-first
+// so "sign in" is replaced before "sign" (prevents partial-match clobbers).
+const SYNONYM_ENTRIES: Array<{ regex: RegExp; canonical: string }> = SYNONYM_GROUPS
+  .flatMap((group) => {
+    const canonical = group[0];
+    return group.map((phrase) => ({ phrase, canonical }));
+  })
+  .filter((e) => e.phrase !== e.canonical)
+  .sort((a, b) => b.phrase.length - a.phrase.length)
+  .map((e) => ({
+    regex: new RegExp(`\\b${escapeRegex(e.phrase)}\\b`, 'gi'),
+    canonical: e.canonical,
+  }));
+
+/** Replace known synonym phrases with their canonical form. */
+export function canonicalizePhrase(s: string): string {
+  let result = s;
+  for (const { regex, canonical } of SYNONYM_ENTRIES) {
+    result = result.replace(regex, canonical);
+  }
+  return result;
+}
+
 // ─── Helpers ───────────────────────────────────────────────────
 
 /** Tokenize: lowercase, strip punctuation, split on whitespace. */
@@ -184,9 +238,9 @@ function scoreNode(node: EnhancedNode, intent: Intent): GroundCandidate {
   let score = 0;
   const reasons: string[] = [];
 
-  const targetText = intent.target ?? '';
+  const targetText = canonicalizePhrase(intent.target ?? '');
   const targetTokens = tokenize(targetText);
-  const nodeText = nodeSearchText(node);
+  const nodeText = canonicalizePhrase(nodeSearchText(node));
   const nodeTokens = tokenize(nodeText);
 
   // Token overlap (primary signal)

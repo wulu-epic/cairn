@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { groundIntent, groundIntentWithFallback, renderGroundResult, levenshtein } from './grounding.js';
+import { groundIntent, groundIntentWithFallback, renderGroundResult, levenshtein, canonicalizePhrase } from './grounding.js';
 import type { Intent } from './parser.js';
 import { makeNode, makeModel } from '../test-utils.js';
 
@@ -135,6 +135,86 @@ describe('groundIntent — navigate prefers links', () => {
   });
 });
 
+// ─── Synonym matching (canonicalization) ──────────────────────
+
+describe('groundIntent — synonym matching', () => {
+  it('matches "log in" to a "Sign In" button (zero token overlap without dictionary)', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'button', name: 'Sign In', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'click', target: 'log in' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('matches "login" to a "Sign In" button', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'button', name: 'Sign In', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'click', target: 'login' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('matches "log out" to a "Sign Out" button', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'button', name: 'Sign Out', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'click', target: 'log out' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('matches "continue" to a "Submit" button', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'button', name: 'Submit', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'click', target: 'continue' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('matches "e-mail" to an "Email" field for type intents', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'textbox', name: 'Email', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'type', target: 'e-mail', text: 'test@test.com' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('matches "dismiss" to a "Cancel" button', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'button', name: 'Cancel', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'click', target: 'dismiss' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('matches "preferences" to a "Settings" link', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'link', name: 'Settings', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'navigate', target: 'preferences' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('does NOT canonicalize "login" inside "logintoken" (word boundaries)', () => {
+    expect(canonicalizePhrase('logintoken')).toBe('logintoken');
+  });
+
+  it('canonicalizes both target and node text, so "register" matches "Sign Up"', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'button', name: 'Sign Up', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'click', target: 'register' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+});
+
 // ─── renderGroundResult ────────────────────────────────────────
 
 describe('renderGroundResult', () => {
@@ -215,11 +295,11 @@ describe('groundIntent — fuzzy (Levenshtein) token matching', () => {
 // ─── groundIntentWithFallback (embeddings fallback) ────────────
 
 // Mock the embeddings module so tests don't need @huggingface/transformers installed.
-// The mock simulates semantic similarity for the "sign in"↔"log in" synonym case.
+// Uses "authenticate" — a synonym NOT in the static dictionary — so deterministic
+// grounding fails and the embeddings fallback path is exercised.
 vi.mock('../intent/embeddings.js', () => ({
   semanticGroundIntent: vi.fn(async (intent: { target: string; kind: string }, model: { refIndex: Map<string, unknown> }) => {
-    // Simulate: "log in" semantically matches a "Sign In" button
-    if (intent.target === 'log in') {
+    if (intent.target === 'authenticate') {
       const node = model.refIndex.get('e1');
       if (node) {
         return {
@@ -245,13 +325,13 @@ describe('groundIntentWithFallback', () => {
     if (result.status === 'match') expect(result.ref).toBe('e1');
   });
 
-  it('falls back to embeddings for synonym mismatch (log in ↔ sign in)', async () => {
+  it('falls back to embeddings for synonym not in dictionary (authenticate ↔ sign in)', async () => {
     const model = makeModel([
       makeNode({ ref: 'e1', role: 'button', name: 'Sign In', interactive: true }),
     ]);
-    // "log in" has zero token overlap with "sign in" → deterministic returns notFound.
-    // The embeddings fallback should catch the synonym.
-    const result = await groundIntentWithFallback({ kind: 'click', target: 'log in' }, model);
+    // "authenticate" is not in the synonym dictionary → deterministic returns notFound.
+    // The embeddings fallback should catch the semantic similarity.
+    const result = await groundIntentWithFallback({ kind: 'click', target: 'authenticate' }, model);
     expect(result.status).toBe('match');
     if (result.status === 'match') expect(result.ref).toBe('e1');
   });
@@ -274,13 +354,13 @@ describe('groundIntentWithFallback', () => {
     const model = makeModel([
       makeNode({ ref: 'e1', role: 'button', name: 'Sign In', interactive: true }),
     ]);
-    const result = await groundIntentWithFallback({ kind: 'click', target: 'log in' }, model);
+    const result = await groundIntentWithFallback({ kind: 'click', target: 'authenticate' }, model);
     // Should return the deterministic notFound, not crash
     expect(result.status).toBe('notFound');
 
     // Restore the mock
     mockFn.mockImplementation(async (intent: { target: string; kind: string }, mdl: { refIndex: Map<string, unknown> }) => {
-      if (intent.target === 'log in') {
+      if (intent.target === 'authenticate') {
         const node = mdl.refIndex.get('e1');
         if (node) return { status: 'match', ref: 'e1', node, score: 0.78, reasons: ['semantic similarity: 78%'] };
       }
