@@ -13,6 +13,14 @@ npx playwright install chromium
 
 > Prefer not to install globally? Use `npx cairn-browser <command>` — same commands, downloads on first run.
 
+Cairn checks for updates on launch — if a newer version is out, you'll see a one-line notice on stderr. Update with:
+
+```bash
+npm update -g cairn-browser
+```
+
+To skip the check: `--no-update-check` flag or `CAIRN_NO_UPDATE_CHECK=1` env var.
+
 ### Agent skill (Claude Code, Cursor, Codex, …)
 
 Cairn ships as an [Agent Skill](https://agentskills.io) — instructions that tell your AI agent to reach for `cairn` instead of hand-writing Playwright scripts.
