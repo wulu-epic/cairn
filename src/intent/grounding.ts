@@ -110,13 +110,58 @@ export function canonicalizePhrase(s: string): string {
 
 // ─── Helpers ───────────────────────────────────────────────────
 
-/** Tokenize: lowercase, strip punctuation, split on whitespace. */
+// Common UI nouns where "-ing" is part of the root, not a suffix.
+// Without this, "setting" would be stripped to "sett", breaking the
+// "settings" → "setting" match.
+const ING_EXCEPTIONS = new Set([
+  'setting', 'warning', 'meeting', 'building', 'heading', 'listing',
+  'rating', 'timing', 'shipping', 'billing', 'morning', 'during',
+  'something', 'anything', 'everything',
+]);
+
+/**
+ * Light suffix stripper — normalizes common English morphological variants
+ * so "clicking" matches "click", "settings" matches "setting", etc.
+ * Strips at most one suffix per word; skips words too short to safely stem.
+ * Words where "-ing" is part of the root (setting, warning, …) are excluded.
+ */
+export function stemToken(w: string): string {
+  if (w.length <= 4) return w;
+
+  // -ing → strip (clicking → click), unless it's a root noun (setting)
+  if (w.endsWith('ing') && w.length > 5 && !ING_EXCEPTIONS.has(w)) return w.slice(0, -3);
+
+  // -est → strip (smallest → small) — check before -es/-s
+  if (w.endsWith('est') && w.length > 5) return w.slice(0, -3);
+
+  // -ed → strip (clicked → click, disabled → disabl)
+  // Words whose root ends in 'e' (disabled→disable, saved→save) lose an
+  // extra char, but the Levenshtein fuzzy matcher catches the 1-char gap.
+  if (w.endsWith('ed') && w.length > 4) return w.slice(0, -2);
+
+  // -es → strip (boxes → box)
+  if (w.endsWith('es') && w.length > 4) return w.slice(0, -2);
+
+  // -er → strip (smaller → small)
+  if (w.endsWith('er') && w.length > 4) return w.slice(0, -2);
+
+  // -ly → strip (quickly → quick)
+  if (w.endsWith('ly') && w.length > 4) return w.slice(0, -2);
+
+  // -s → strip (items → item) — skip -ss (class, address)
+  if (w.endsWith('s') && !w.endsWith('ss') && w.length > 4) return w.slice(0, -1);
+
+  return w;
+}
+
+/** Tokenize: lowercase, strip punctuation, split on whitespace, stem each token. */
 function tokenize(s: string): string[] {
   return s
     .toLowerCase()
     .replace(/[^\w\s]/g, ' ')
     .split(/\s+/)
-    .filter((t) => t.length > 0);
+    .filter((t) => t.length > 0)
+    .map(stemToken);
 }
 
 /**

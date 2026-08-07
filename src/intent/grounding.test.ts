@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { groundIntent, groundIntentWithFallback, renderGroundResult, levenshtein, canonicalizePhrase } from './grounding.js';
+import { groundIntent, groundIntentWithFallback, renderGroundResult, levenshtein, canonicalizePhrase, stemToken } from './grounding.js';
 import type { Intent } from './parser.js';
 import { makeNode, makeModel } from '../test-utils.js';
 
@@ -210,6 +210,81 @@ describe('groundIntent — synonym matching', () => {
       makeNode({ ref: 'e1', role: 'button', name: 'Sign Up', interactive: true }),
     ]);
     const result = groundIntent({ kind: 'click', target: 'register' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+});
+
+// ─── Light stemming ────────────────────────────────────────────
+
+describe('stemToken', () => {
+  it('strips -ing (clicking → click)', () => {
+    expect(stemToken('clicking')).toBe('click');
+  });
+
+  it('strips -ed (clicked → click, disabled → disabl)', () => {
+    expect(stemToken('clicked')).toBe('click');
+    // "disabled" → "disabl" (not "disable") — the root ends in 'e' but a
+    // simple suffix stripper can't know that. The Levenshtein fuzzy matcher
+    // catches the 1-char gap (disabl ≈ disable, distance 1).
+    expect(stemToken('disabled')).toBe('disabl');
+  });
+
+  it('strips -s (settings → setting)', () => {
+    expect(stemToken('settings')).toBe('setting');
+  });
+
+  it('strips -es (boxes → box)', () => {
+    expect(stemToken('boxes')).toBe('box');
+  });
+
+  it('does NOT strip -ss (class stays class)', () => {
+    expect(stemToken('class')).toBe('class');
+  });
+
+  it('does NOT stem words ≤ 4 chars (yes stays yes)', () => {
+    expect(stemToken('yes')).toBe('yes');
+    expect(stemToken('this')).toBe('this');
+  });
+
+  it('does NOT strip -ing from root nouns (setting stays setting)', () => {
+    expect(stemToken('setting')).toBe('setting');
+    expect(stemToken('warning')).toBe('warning');
+  });
+
+  it('strips -est (smallest → small)', () => {
+    expect(stemToken('smallest')).toBe('small');
+  });
+
+  it('strips -er (smaller → small)', () => {
+    expect(stemToken('smaller')).toBe('small');
+  });
+});
+
+describe('groundIntent — morphological variants via stemming', () => {
+  it('matches "clicking" to a "Click" button', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'button', name: 'Click', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'click', target: 'clicking' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('matches "settings" to a "Setting" link', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'link', name: 'Setting', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'navigate', target: 'settings' }, model);
+    expect(result.status).toBe('match');
+    if (result.status === 'match') expect(result.ref).toBe('e1');
+  });
+
+  it('matches "disabled" to a "Disable" toggle', () => {
+    const model = makeModel([
+      makeNode({ ref: 'e1', role: 'switch', name: 'Disable', interactive: true }),
+    ]);
+    const result = groundIntent({ kind: 'click', target: 'disabled' }, model);
     expect(result.status).toBe('match');
     if (result.status === 'match') expect(result.ref).toBe('e1');
   });
