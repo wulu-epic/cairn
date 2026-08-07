@@ -36,6 +36,7 @@ import { selfHealByRef } from './intent/self-heal.js';
 import { compilePlan, executePlan, savePlan, loadPlan, listPlans, deletePlan, renderPlanList, renderPlanDetails, getPlansDir } from './intent/planner.js';
 import { parseQueryType, queryMatch, queryPrimaryAction, queryFormFields, queryDiff, saveModelSnapshot, renderQueryResult } from './intent/query.js';
 import { TraceCollector, decodeTrace } from './actions/trace.js';
+import { checkForUpdate } from './update-check.js';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
@@ -67,6 +68,7 @@ let includeHidden = false;
 let recordName: string | null = null;  // --record <name>: enable task recording
 let traceMode = false;                 // --trace: capture non-DOM side effects
 let queryRegion: string | null = null; // --region <r>: scope a query to a region
+let noUpdateCheck = false;             // --no-update-check: skip update check
 const cmdArgs: string[] = [];
 for (let i = 0; i < remainingArgs.length; i++) {
   if (remainingArgs[i] === '--session' && i + 1 < remainingArgs.length) {
@@ -86,6 +88,8 @@ for (let i = 0; i < remainingArgs.length; i++) {
   } else if (remainingArgs[i] === '--region' && i + 1 < remainingArgs.length) {
     queryRegion = remainingArgs[i + 1];
     i++;
+  } else if (remainingArgs[i] === '--no-update-check') {
+    noUpdateCheck = true;
   } else {
     cmdArgs.push(remainingArgs[i]);
   }
@@ -181,6 +185,7 @@ Options:
   --trace                Capture non-DOM side effects (failed XHRs, console
                            errors, JS exceptions) during the action — answers
                            "I clicked and nothing happened, why?"
+  --no-update-check      Skip the npm registry update check on launch
   --help, -h             Show this help
   --version, -V          Show version
 
@@ -189,6 +194,7 @@ Environment variables:
   STEEL_API_KEY          Steel API key (self-hosted usually has none)
   STEEL_PROXY_URL        Default proxy URL for all Steel sessions
   STEEL_HEADLESS         "false" to run Steel browser headed
+  CAIRN_NO_UPDATE_CHECK  Set to "1" to skip the update check on every launch
 
 Design: act by stable ref, never by coordinate. Every output is self-describing.`);
 }
@@ -207,6 +213,13 @@ if (!COMMANDS.includes(command as Command)) {
   console.error(`Unknown command: ${command}`);
   console.error(`Available commands: ${COMMANDS.join(', ')}`);
   process.exit(1);
+}
+
+// ─── Update check (non-blocking, once per 24h, stderr only) ────
+// Fires before main() so the warning appears before command output.
+// Skipped for --help, --version, --no-update-check, and CAIRN_NO_UPDATE_CHECK env var.
+if (!noUpdateCheck) {
+  checkForUpdate(CLI_VERSION).catch(() => { /* never break the CLI */ });
 }
 
 // ─── Resolve config + create session ───────────────────────────
